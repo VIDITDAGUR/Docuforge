@@ -119,3 +119,37 @@
   padding-left: 1.5rem;
   margin-bottom: 0.5rem;
 }
+
+.df-editor-surface table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  table-layout: fixed;
+}
+
+.df-editor-surface th,
+.df-editor-surface td {
+  border: 1px solid #999999;
+  padding: 6px 8px;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.df-editor-surface th p,
+.df-editor-surface td p {
+  margin-bottom: 0.2rem;
+}
+
+.df-editor-surface img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  margin: 0.4rem 0;
+}
+
+.df-editor-surface blockquote {
+  border-left: 3px solid #CCCCCC;
+  padding-left: 0.75rem;
+  color: #555555;
+  margin: 0.5rem 0;
+}

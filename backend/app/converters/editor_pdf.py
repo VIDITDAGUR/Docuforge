@@ -1,21 +1,22 @@
 from html import escape
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
 class EditorBlock(BaseModel):
-    kind: Literal["h1", "h2", "h3", "p", "ul_item", "ol_item"] = "p"
+    kind: Literal["h1", "h2", "h3", "p", "ul_item", "ol_item", "table"] = "p"
     align: Literal["left", "center", "right", "justify"] = "left"
     runs: List[dict] = []
     text: str = ""
     index: int = 1
+    rows: Optional[List[List[str]]] = None
 
 
 ALIGN_MAP = {
@@ -48,12 +49,47 @@ def render_editor_blocks_to_pdf(blocks: List[EditorBlock], output_path: Path) ->
     )
 
     story = []
+    avail_w = LETTER[0] - 1.7 * inch
+
     for block in blocks:
+        if block.kind == "table" and block.rows:
+            data = []
+            for r_idx, row in enumerate(block.rows):
+                cell_style = ParagraphStyle(
+                    f"TblCell_{r_idx == 0}",
+                    parent=body_base,
+                    fontName="Helvetica-Bold" if r_idx == 0 else "Helvetica",
+                    fontSize=10,
+                    leading=13,
+                    spaceAfter=0,
+                )
+                data.append([Paragraph(escape(str(c or "")), cell_style) for c in row])
+            if data:
+                col_count = max(len(r) for r in data)
+                col_w = avail_w / max(1, col_count)
+                rl_table = Table(data, colWidths=[col_w] * col_count)
+                rl_table.setStyle(
+                    TableStyle(
+                        [
+                            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F5F5F5")),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("PADDING", (0, 0), (-1, -1), 6),
+                        ]
+                    )
+                )
+                story.append(Spacer(1, 6))
+                story.append(rl_table)
+                story.append(Spacer(1, 10))
+            continue
+
         parts = []
         for run in block.runs:
             txt = escape(str(run.get("text", "")))
             if not txt:
                 continue
+            if run.get("color"):
+                txt = f'<font color="{escape(str(run["color"]))}">{txt}</font>'
             if run.get("bold"):
                 txt = f"<b>{txt}</b>"
             if run.get("italic"):

@@ -158,3 +158,56 @@ def test_temp_files_cleaned_up():
     assert res.status_code == 200
     after = set(tmp_root.glob("docuforge_*"))
     assert after - before == set()
+
+
+def test_pdf_to_word_preserves_tables_and_lists():
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 70), "Lab Report Title", fontsize=20)
+    page.insert_text((72, 110), "- First bullet item", fontsize=11)
+    page.insert_text((72, 130), "- Second bullet item", fontsize=11)
+    # Draw a 2x2 table grid
+    for x in (72, 200, 350):
+        page.draw_line((x, 160), (x, 220))
+    for y in (160, 190, 220):
+        page.draw_line((72, y), (350, y))
+    page.insert_text((80, 180), "Header A", fontsize=11)
+    page.insert_text((210, 180), "Header B", fontsize=11)
+    page.insert_text((80, 210), "Row 1 A", fontsize=11)
+    page.insert_text((210, 210), "Row 1 B", fontsize=11)
+    buf = BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    res = client.post(
+        "/api/convert/pdf-to-word",
+        files={"file": ("table_report.pdf", buf.getvalue(), "application/pdf")},
+    )
+    assert res.status_code == 200
+    out_doc = Document(BytesIO(res.content))
+    assert len(out_doc.tables) >= 1
+    table_text = " ".join(c.text for r in out_doc.tables[0].rows for c in r.cells)
+    assert "Header A" in table_text
+    assert "Row 1 B" in table_text
+    para_text = "\n".join(p.text for p in out_doc.paragraphs)
+    assert "First bullet item" in para_text
+    assert "Second bullet item" in para_text
+
+
+def test_editor_pdf_export_with_table():
+    res = client.post(
+        "/api/export/editor-pdf",
+        json={
+            "title": "table-notes",
+            "blocks": [
+                {"kind": "h1", "align": "center", "runs": [{"text": "Table Report", "bold": True}], "text": "Table Report", "index": 1},
+                {"kind": "table", "align": "left", "runs": [], "text": "", "index": 1, "rows": [["Col 1", "Col 2"], ["A", "B"]]},
+            ],
+        },
+    )
+    assert res.status_code == 200
+    assert res.content.startswith(b"%PDF-")
+    with fitz.open(stream=res.content, filetype="pdf") as pdf:
+        txt = pdf[0].get_text()
+        assert "Table Report" in txt
+        assert "Col 1" in txt
