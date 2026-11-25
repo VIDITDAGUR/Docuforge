@@ -13,6 +13,34 @@ export const GitHubPage: React.FC = () => {
       </div>
 
       <div className="mt-6 space-y-5">
+        <section className="border border-[#E5E5E5] bg-[#F5F5F5] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-mono uppercase tracking-wider text-[#777777]">Maintainer</div>
+            <h2 className="text-base font-semibold text-[#222222] mt-0.5">Vidit Dagur (@VIDITDAGUR)</h2>
+            <p className="text-xs text-[#777777] mt-1 font-mono">
+              github.com/VIDITDAGUR/Docuforge
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="https://github.com/VIDITDAGUR"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="df-btn-dark px-3.5 py-2 text-xs font-medium"
+            >
+              GitHub Profile
+            </a>
+            <a
+              href="https://github.com/VIDITDAGUR/Docuforge"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="df-btn-light px-3.5 py-2 text-xs font-medium"
+            >
+              View Repository
+            </a>
+          </div>
+        </section>
+
         <section className="border border-[#E5E5E5] bg-white p-5">
           <h2 className="text-base font-semibold text-[#222222] mb-3">Architecture &amp; Tech Stack</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
