@@ -14,7 +14,13 @@ export interface ToolDefinition {
   slug: string;
   name: string;
   category: ToolCategory;
-  groupLabel: 'Document Conversion' | 'Document Viewers' | 'Document Editors' | 'PDF Utilities';
+  groupLabel:
+    | 'Document Conversion'
+    | 'Document Viewers'
+    | 'Document Editors'
+    | 'PDF Utilities'
+    | 'Document Utilities'
+    | 'Image Utilities';
   description: string;
   acceptedExtensions: string[];
   acceptedMimeTypes: string[];

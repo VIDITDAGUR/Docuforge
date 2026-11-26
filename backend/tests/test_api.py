@@ -211,3 +211,69 @@ def test_editor_pdf_export_with_table():
         txt = pdf[0].get_text()
         assert "Table Report" in txt
         assert "Col 1" in txt
+
+
+def test_pdf_compressor_shrinks_image_pdf():
+    from PIL import Image
+
+    img = Image.new("RGB", (1600, 1200))
+    # Add noisy gradients so uncompressed/high-res PNG inside PDF is bulky
+    pixels = img.load()
+    for x in range(0, 1600, 2):
+        for y in range(0, 1200, 2):
+            pixels[x, y] = ((x * 7) % 255, (y * 11) % 255, ((x + y) * 3) % 255)
+    img_buf = BytesIO()
+    img.save(img_buf, format="PNG")
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_image(fitz.Rect(20, 20, 560, 440), stream=img_buf.getvalue())
+    pdf_buf = BytesIO()
+    pdf.save(pdf_buf)
+    pdf.close()
+    raw_pdf = pdf_buf.getvalue()
+
+    res = client.post(
+        "/api/compress/pdf",
+        files={"file": ("heavy.pdf", raw_pdf, "application/pdf")},
+        data={"compression": "75"},
+    )
+    assert res.status_code == 200
+    assert res.content.startswith(b"%PDF-")
+    assert len(res.content) < len(raw_pdf)
+
+
+def test_word_compressor_shrinks_image_docx():
+    from PIL import Image
+    from docx.shared import Inches
+
+    img = Image.new("RGB", (1400, 1000), (180, 90, 60))
+    pixels = img.load()
+    for x in range(0, 1400, 2):
+        for y in range(0, 1000, 2):
+            pixels[x, y] = ((x * 5) % 255, (y * 9) % 255, 120)
+    img_buf = BytesIO()
+    img.save(img_buf, format="PNG")
+    img_buf.seek(0)
+
+    doc = Document()
+    doc.add_heading("Heavy Report", level=1)
+    doc.add_picture(img_buf, width=Inches(5.0))
+    docx_buf = BytesIO()
+    doc.save(docx_buf)
+    raw_docx = docx_buf.getvalue()
+
+    res = client.post(
+        "/api/compress/word",
+        files={
+            "file": (
+                "heavy.docx",
+                raw_docx,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+        data={"compression": "75"},
+    )
+    assert res.status_code == 200
+    assert res.content.startswith(b"PK\x03\x04")
+    assert len(res.content) < len(raw_docx)

@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 from typing import List
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -14,10 +14,11 @@ from .converters.word_to_pdf import convert_docx_to_pdf
 from .converters.pdf_to_pptx import convert_pdf_to_pptx
 from .converters.pptx_to_pdf import convert_pptx_to_pdf
 from .converters.editor_pdf import EditorBlock, render_editor_blocks_to_pdf
+from .converters.compressors import compress_docx, compress_pdf
 
 app = FastAPI(
     title="DOCUFORGE API",
-    description="Stateless document conversion API for DOCUFORGE.",
+    description="Stateless document conversion and compression API for DOCUFORGE.",
     version="1.0.0",
 )
 
@@ -27,6 +28,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+    expose_headers=["X-Original-Bytes", "X-Compressed-Bytes", "Content-Disposition"],
 )
 
 
@@ -135,5 +137,57 @@ async def export_editor_pdf_endpoint(payload: EditorExportRequest):
         path=output_path,
         filename=out_name,
         media_type="application/pdf",
+        background=BackgroundTask(cleanup_dir, temp_dir),
+    )
+
+
+@app.post("/api/compress/pdf")
+async def compress_pdf_endpoint(
+    file: UploadFile = File(...),
+    compression: int = Form(50),
+):
+    temp_dir, input_path = await save_validated_upload(file, ".pdf")
+    out_name = f"{safe_stem(file.filename)}-compressed.pdf"
+    output_path = temp_dir / out_name
+    try:
+        orig_bytes, new_bytes = compress_pdf(input_path, output_path, compression)
+    except Exception as exc:
+        cleanup_dir(temp_dir)
+        raise HTTPException(status_code=422, detail=f"PDF compression failed: {exc}") from exc
+
+    return FileResponse(
+        path=output_path,
+        filename=out_name,
+        media_type="application/pdf",
+        headers={
+            "X-Original-Bytes": str(orig_bytes),
+            "X-Compressed-Bytes": str(new_bytes),
+        },
+        background=BackgroundTask(cleanup_dir, temp_dir),
+    )
+
+
+@app.post("/api/compress/word")
+async def compress_word_endpoint(
+    file: UploadFile = File(...),
+    compression: int = Form(50),
+):
+    temp_dir, input_path = await save_validated_upload(file, ".docx")
+    out_name = f"{safe_stem(file.filename)}-compressed.docx"
+    output_path = temp_dir / out_name
+    try:
+        orig_bytes, new_bytes = compress_docx(input_path, output_path, compression)
+    except Exception as exc:
+        cleanup_dir(temp_dir)
+        raise HTTPException(status_code=422, detail=f"Word compression failed: {exc}") from exc
+
+    return FileResponse(
+        path=output_path,
+        filename=out_name,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "X-Original-Bytes": str(orig_bytes),
+            "X-Compressed-Bytes": str(new_bytes),
+        },
         background=BackgroundTask(cleanup_dir, temp_dir),
     )

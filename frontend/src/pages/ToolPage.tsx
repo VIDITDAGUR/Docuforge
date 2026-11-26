@@ -16,6 +16,9 @@ const PdfResizerTool = lazy(() => import('../tools/PdfResizerTool'));
 const WordEditorTool = lazy(() => import('../tools/WordEditorTool'));
 const PdfEditorTool = lazy(() => import('../tools/PdfEditorTool'));
 const PptxEditorTool = lazy(() => import('../tools/PptxEditorTool'));
+const PdfCompressorTool = lazy(() => import('../tools/PdfCompressorTool'));
+const WordCompressorTool = lazy(() => import('../tools/WordCompressorTool'));
+const ImageCompressorTool = lazy(() => import('../tools/ImageCompressorTool'));
 
 export const ToolPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -63,6 +66,12 @@ export const ToolPage: React.FC = () => {
         return <PdfEditorTool tool={tool} />;
       case 'pptx-editor':
         return <PptxEditorTool tool={tool} />;
+      case 'pdf-compressor':
+        return <PdfCompressorTool tool={tool} />;
+      case 'word-compressor':
+        return <WordCompressorTool tool={tool} />;
+      case 'image-compressor':
+        return <ImageCompressorTool tool={tool} />;
       default:
         return null;
     }
