@@ -15,6 +15,7 @@ from .converters.pdf_to_pptx import convert_pdf_to_pptx
 from .converters.pptx_to_pdf import convert_pptx_to_pdf
 from .converters.editor_pdf import EditorBlock, render_editor_blocks_to_pdf
 from .converters.compressors import compress_docx, compress_pdf
+from .converters.libreoffice import find_libreoffice
 
 app = FastAPI(
     title="DOCUFORGE API",
@@ -38,6 +39,7 @@ def health_check():
         "status": "ok",
         "service": "docuforge-api",
         "max_upload_mb": MAX_UPLOAD_MB,
+        "libreoffice_available": bool(find_libreoffice()),
     }
 
 

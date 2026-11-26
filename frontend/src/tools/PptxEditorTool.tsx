@@ -10,16 +10,16 @@ import {
   Type,
   Upload,
 } from 'lucide-react';
+import { parse as parsePptxToJson } from 'pptxtojson';
 import PptxGenJS from 'pptxgenjs';
 import { ToolDefinition } from '../types/tools';
 import { StatusBanner } from '../components/common/StatusBanner';
 import { useStagedToolFiles } from '../hooks/useStagedToolFiles';
-import { parsePptxFile } from '../services/pptxParser';
 import { triggerBlobDownload, validateFile } from '../utils/fileValidation';
 
 interface SlideElement {
   id: string;
-  kind: 'text' | 'rect' | 'ellipse' | 'line';
+  kind: 'text' | 'rect' | 'ellipse' | 'line' | 'image';
   xPct: number;
   yPct: number;
   wPct: number;
@@ -31,12 +31,39 @@ interface SlideElement {
   textColor: string;
   fillColor: string;
   strokeColor: string;
+  imageData?: string;
 }
 
 interface SlideItem {
   id: string;
   backgroundColor: string;
   elements: SlideElement[];
+}
+
+function stripHtmlToPlainText(html: string): string {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const blocks = Array.from(doc.body.querySelectorAll('p, div, li'));
+  if (blocks.length > 0) {
+    return blocks
+      .map((b) => (b.textContent || '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+  return (doc.body.textContent || '').trim();
+}
+
+function normalizeHex(color: string | undefined, fallback: string): string {
+  if (!color) return fallback;
+  const trimmed = color.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) return trimmed;
+  if (/^[0-9A-Fa-f]{6}$/.test(trimmed)) return `#${trimmed}`;
+  const m = trimmed.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/i);
+  if (m) {
+    const h = (n: string) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0');
+    return `#${h(m[1])}${h(m[2])}${h(m[3])}`;
+  }
+  return fallback;
 }
 
 function createInitialSlides(): SlideItem[] {
@@ -107,46 +134,120 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
       return;
     }
 
-    setStatus({ type: 'loading', message: `Loading "${file.name}"...` });
+    setStatus({ type: 'loading', message: `Parsing "${file.name}" with pptxtojson...` });
     try {
-      const parsed = await parsePptxFile(file);
-      if (parsed.slides.length === 0) {
+      const buffer = await file.arrayBuffer();
+      const parsed = await parsePptxToJson(buffer, { imageMode: 'base64' });
+      if (!parsed.slides || parsed.slides.length === 0) {
         setStatus({ type: 'error', message: 'PPTX contains no slides.' });
         return;
       }
 
-      const mapped: SlideItem[] = parsed.slides.map((s, sIdx) => ({
-        id: `slide-${Date.now()}-${sIdx}`,
-        backgroundColor: s.backgroundColor || '#FFFFFF',
-        elements: s.elements.map((el, eIdx) => ({
-          id: `el-${sIdx}-${eIdx}-${Date.now()}`,
-          kind:
-            el.type === 'text'
-              ? 'text'
-              : el.shapeKind === 'ellipse'
-              ? 'ellipse'
-              : el.shapeKind === 'line'
-              ? 'line'
-              : 'rect',
-          xPct: el.x,
-          yPct: el.y,
-          wPct: el.w,
-          hPct: el.h,
-          text: el.text || '',
-          fontSizePt: el.paragraphs?.[0]?.fontSizePx || 18,
-          bold: Boolean(el.paragraphs?.[0]?.bold),
-          align: el.paragraphs?.[0]?.align || 'left',
-          textColor: el.paragraphs?.[0]?.color || '#222222',
-          fillColor: el.fillColor || (el.type === 'text' ? 'transparent' : '#F5F5F5'),
-          strokeColor: el.strokeColor || (el.type === 'text' ? 'transparent' : '#222222'),
-        })),
-      }));
+      const slideW = parsed.size?.width || 960;
+      const slideH = parsed.size?.height || 540;
+
+      const mapped: SlideItem[] = parsed.slides.map((s, sIdx) => {
+        const bgColor =
+          s.fill?.type === 'color'
+            ? normalizeHex(s.fill.value, '#FFFFFF')
+            : s.fill?.type === 'gradient' && s.fill.value.colors[0]
+            ? normalizeHex(s.fill.value.colors[0].color, '#FFFFFF')
+            : '#FFFFFF';
+
+        const elements: SlideElement[] = [];
+        for (let eIdx = 0; eIdx < (s.elements || []).length; eIdx++) {
+          const el = s.elements[eIdx];
+          const xPct = Math.max(0, Math.min(98, (el.left / slideW) * 100));
+          const yPct = Math.max(0, Math.min(98, (el.top / slideH) * 100));
+          const wPct = Math.max(2, Math.min(100, (el.width / slideW) * 100));
+          const hPct = Math.max(2, Math.min(100, (el.height / slideH) * 100));
+
+          if (el.type === 'image' && el.base64) {
+            elements.push({
+              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
+              kind: 'image',
+              xPct,
+              yPct,
+              wPct,
+              hPct,
+              text: '',
+              fontSizePt: 16,
+              bold: false,
+              align: 'left',
+              textColor: '#222222',
+              fillColor: 'transparent',
+              strokeColor: 'transparent',
+              imageData: el.base64,
+            });
+          } else if (el.type === 'text') {
+            const plain = stripHtmlToPlainText(el.content);
+            if (!plain) continue;
+            elements.push({
+              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
+              kind: 'text',
+              xPct,
+              yPct,
+              wPct,
+              hPct,
+              text: plain,
+              fontSizePt: 18,
+              bold: el.content.includes('bold') || el.content.includes('<b>') || el.content.includes('<strong>'),
+              align: el.content.includes('text-align: center')
+                ? 'center'
+                : el.content.includes('text-align: right')
+                ? 'right'
+                : 'left',
+              textColor: '#222222',
+              fillColor: 'transparent',
+              strokeColor: 'transparent',
+            });
+          } else if (el.type === 'shape') {
+            const plain = stripHtmlToPlainText(el.content || '');
+            const shapeFill =
+              el.fill?.type === 'color' ? normalizeHex(el.fill.value, '#F5F5F5') : 'transparent';
+            const shapeStroke = el.borderColor ? normalizeHex(el.borderColor, '#222222') : '#222222';
+            const kind: SlideElement['kind'] =
+              el.shapType === 'ellipse'
+                ? 'ellipse'
+                : el.shapType === 'line'
+                ? 'line'
+                : plain && shapeFill === 'transparent'
+                ? 'text'
+                : 'rect';
+
+            elements.push({
+              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
+              kind,
+              xPct,
+              yPct,
+              wPct,
+              hPct,
+              text: plain,
+              fontSizePt: 16,
+              bold: false,
+              align: 'center',
+              textColor: '#222222',
+              fillColor: shapeFill,
+              strokeColor: shapeStroke,
+            });
+          }
+        }
+
+        return {
+          id: `slide-${Date.now()}-${sIdx}`,
+          backgroundColor: bgColor,
+          elements,
+        };
+      });
 
       setSlides(mapped);
       setActiveSlideIdx(0);
       setSelectedElId(mapped[0]?.elements[0]?.id || null);
       setDeckTitle(file.name.replace(/\.pptx$/i, ''));
-      setStatus({ type: 'success', message: `Loaded ${mapped.length} slides from "${file.name}".` });
+      setStatus({
+        type: 'success',
+        message: `Parsed ${mapped.length} slides from "${file.name}" using pptxtojson.`,
+      });
     } catch (err) {
       setStatus({
         type: 'error',
@@ -210,7 +311,7 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
     setSelectedElId(null);
   };
 
-  const addElement = (kind: SlideElement['kind']) => {
+  const addElement = (kind: Exclude<SlideElement['kind'], 'image'>) => {
     const id = `el-${Date.now()}`;
     const newEl: SlideElement = {
       id,
@@ -274,10 +375,10 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
 
   const handleExportPptx = async () => {
     setExporting(true);
-    setStatus({ type: 'loading', message: 'Building PPTX presentation...' });
+    setStatus({ type: 'loading', message: 'Exporting PPTX presentation via PptxGenJS...' });
     try {
       const pres = new PptxGenJS();
-      pres.layout = 'LAYOUT_16x9'; // 10 in x 5.625 in
+      pres.layout = 'LAYOUT_16x9';
       const slideWIn = 10;
       const slideHIn = 5.625;
 
@@ -291,7 +392,9 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
           const w = Math.max(0.2, (el.wPct / 100) * slideWIn);
           const h = Math.max(0.1, (el.hPct / 100) * slideHIn);
 
-          if (el.kind === 'text') {
+          if (el.kind === 'image' && el.imageData) {
+            slide.addImage({ data: el.imageData, x, y, w, h });
+          } else if (el.kind === 'text') {
             slide.addText(el.text || ' ', {
               x,
               y,
@@ -312,6 +415,18 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
               fill: { color: (el.fillColor === 'transparent' ? 'F5F5F5' : el.fillColor).replace('#', '') },
               line: { color: (el.strokeColor === 'transparent' ? '222222' : el.strokeColor).replace('#', ''), width: 1 },
             });
+            if (el.text) {
+              slide.addText(el.text, {
+                x,
+                y,
+                w,
+                h,
+                fontSize: el.fontSizePt,
+                align: el.align,
+                color: el.textColor.replace('#', ''),
+                valign: 'middle',
+              });
+            }
           } else if (el.kind === 'ellipse') {
             slide.addShape(pres.ShapeType.ellipse, {
               x,
@@ -337,7 +452,7 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
       const blob = outData instanceof Blob ? outData : new Blob([outData as ArrayBuffer]);
       const filename = `${deckTitle.trim() || 'presentation'}.pptx`;
       triggerBlobDownload(blob, filename);
-      setStatus({ type: 'success', message: `Exported "${filename}" (${slides.length} slides).` });
+      setStatus({ type: 'success', message: `Exported "${filename}" (${slides.length} slides) via PptxGenJS.` });
     } catch (err) {
       setStatus({
         type: 'error',
@@ -413,7 +528,6 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
 
       {/* Main Editor Workspace */}
       <div className="border border-[#E5E5E5] bg-white">
-        {/* Insert & Background Toolbar */}
         <div className="border-b border-[#E5E5E5] bg-[#F5F5F5] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <button
@@ -475,7 +589,6 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12">
-          {/* Slide List Sidebar */}
           <aside className="lg:col-span-3 border-b lg:border-b-0 lg:border-r border-[#E5E5E5] bg-[#F5F5F5] p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-1">
               <button
@@ -525,7 +638,6 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
             </div>
           </aside>
 
-          {/* Slide Canvas + Inspector */}
           <div className="lg:col-span-9 flex flex-col">
             <div className="bg-[#E5E5E5] p-4 sm:p-6 flex justify-center">
               <div
@@ -562,11 +674,14 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
                             ? el.strokeColor
                             : 'transparent',
                         border:
-                          el.kind === 'rect'
+                          el.kind === 'rect' && el.strokeColor !== 'transparent'
                             ? `1px solid ${el.strokeColor}`
                             : undefined,
                       }}
                     >
+                      {el.kind === 'image' && el.imageData && (
+                        <img src={el.imageData} alt="Slide element" className="w-full h-full object-contain pointer-events-none" />
+                      )}
                       {el.kind === 'ellipse' && (
                         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
                           <ellipse
@@ -580,7 +695,7 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
                           />
                         </svg>
                       )}
-                      {el.kind === 'text' && (
+                      {(el.kind === 'text' || (el.kind === 'rect' && el.text)) && (
                         <div
                           className="w-full h-full p-1 whitespace-pre-wrap break-words"
                           style={{
@@ -600,7 +715,6 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
               </div>
             </div>
 
-            {/* Selected Element Properties Inspector */}
             <div className="border-t border-[#E5E5E5] bg-white p-3.5 text-xs">
               {selectedEl ? (
                 <div className="space-y-3">
@@ -682,7 +796,7 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
 
                   {selectedEl.kind !== 'text' && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {selectedEl.kind !== 'line' && (
+                      {selectedEl.kind !== 'line' && selectedEl.kind !== 'image' && (
                         <div>
                           <label className="block text-[#777777] mb-1">Fill Color</label>
                           <input
@@ -693,15 +807,17 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
                           />
                         </div>
                       )}
-                      <div>
-                        <label className="block text-[#777777] mb-1">Border Color</label>
-                        <input
-                          type="color"
-                          value={selectedEl.strokeColor === 'transparent' ? '#222222' : selectedEl.strokeColor}
-                          onChange={(e) => updateSelectedElement({ strokeColor: e.target.value })}
-                          className="w-full h-7 border border-[#E5E5E5] p-0 cursor-pointer"
-                        />
-                      </div>
+                      {selectedEl.kind !== 'image' && (
+                        <div>
+                          <label className="block text-[#777777] mb-1">Border Color</label>
+                          <input
+                            type="color"
+                            value={selectedEl.strokeColor === 'transparent' ? '#222222' : selectedEl.strokeColor}
+                            onChange={(e) => updateSelectedElement({ strokeColor: e.target.value })}
+                            className="w-full h-7 border border-[#E5E5E5] p-0 cursor-pointer"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-[#777777] mb-1">Width (%)</label>
                         <input

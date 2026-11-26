@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from .libreoffice import convert_with_libreoffice
 
 
 ALIGN_MAP = {
@@ -37,6 +38,9 @@ def _runs_to_reportlab_markup(paragraph) -> str:
 
 
 def convert_docx_to_pdf(docx_path: Path, output_path: Path) -> None:
+    if convert_with_libreoffice(docx_path, output_path, "pdf"):
+        return
+
     docx_doc = Document(docx_path)
     base_styles = getSampleStyleSheet()
 

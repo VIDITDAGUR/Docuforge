@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import { init as initPptxPreview } from 'pptx-preview';
+import type PPTXPreviewer from 'pptx-preview/dist/previewer/index';
 import { ToolDefinition } from '../types/tools';
 import { FileDropzone } from '../components/common/FileDropzone';
 import { StatusBanner } from '../components/common/StatusBanner';
 import { useStagedToolFiles } from '../hooks/useStagedToolFiles';
-import { ParsedPresentation, parsePptxFile } from '../services/pptxParser';
 import { triggerBlobDownload } from '../utils/fileValidation';
 
 const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
@@ -12,11 +13,13 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const [presentation, setPresentation] = useState<ParsedPresentation | null>(null);
+  const [slideCount, setSlideCount] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const previewWrapRef = useRef<HTMLDivElement | null>(null);
+  const previewerRef = useRef<PPTXPreviewer | null>(null);
 
   useStagedToolFiles(tool.acceptedExtensions, tool.maxSizeMB, false, (incoming) => {
     setFiles(incoming);
@@ -25,7 +28,9 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
   useEffect(() => {
     let cancelled = false;
     if (files.length === 0) {
-      setPresentation(null);
+      previewerRef.current?.destroy();
+      previewerRef.current = null;
+      setSlideCount(0);
       setActiveSlide(0);
       return;
     }
@@ -34,17 +39,39 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
       setLoading(true);
       setError(null);
       try {
-        const parsed = await parsePptxFile(files[0]);
-        if (cancelled) return;
-        if (parsed.slides.length === 0) {
+        const buffer = await files[0].arrayBuffer();
+        if (cancelled || !previewWrapRef.current) return;
+
+        previewerRef.current?.destroy();
+        previewWrapRef.current.innerHTML = '';
+
+        const containerW = Math.min(960, Math.max(320, previewWrapRef.current.clientWidth || 860));
+        const containerH = Math.round((containerW * 9) / 16);
+
+        const previewer = initPptxPreview(previewWrapRef.current, {
+          width: containerW,
+          height: containerH,
+          mode: 'slide',
+        });
+
+        await previewer.preview(buffer);
+        if (cancelled) {
+          previewer.destroy();
+          return;
+        }
+
+        previewerRef.current = previewer;
+        const count = previewer.slideCount || 0;
+        if (count === 0) {
           setError('No slides found in this PPTX file.');
         } else {
-          setPresentation(parsed);
+          setSlideCount(count);
           setActiveSlide(0);
+          previewer.renderSingleSlide(0);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to parse PPTX presentation.');
+          setError(err instanceof Error ? err.message : 'Unable to render PPTX presentation.');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -57,17 +84,31 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
   }, [files]);
 
   useEffect(() => {
+    return () => {
+      previewerRef.current?.destroy();
+      previewerRef.current = null;
+    };
+  }, []);
+
+  const goToSlide = (idx: number) => {
+    if (!previewerRef.current || slideCount === 0) return;
+    const clamped = Math.max(0, Math.min(slideCount - 1, idx));
+    setActiveSlide(clamped);
+    previewerRef.current.renderSingleSlide(clamped);
+  };
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!presentation) return;
+      if (slideCount === 0) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-        setActiveSlide((s) => Math.min(presentation.slides.length - 1, s + 1));
+        goToSlide(activeSlide + 1);
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        setActiveSlide((s) => Math.max(0, s - 1));
+        goToSlide(activeSlide - 1);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [presentation]);
+  }, [activeSlide, slideCount]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -87,13 +128,13 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
   };
 
   const handleReset = () => {
+    previewerRef.current?.destroy();
+    previewerRef.current = null;
     setFiles([]);
-    setPresentation(null);
-    setError(null);
+    setSlideCount(0);
     setActiveSlide(0);
+    setError(null);
   };
-
-  const slide = presentation?.slides[activeSlide];
 
   return (
     <div className="space-y-4">
@@ -106,158 +147,115 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
         onFilesSelected={setFiles}
         onError={setError}
         onReset={handleReset}
-        compact={Boolean(presentation)}
+        compact={slideCount > 0}
       />
 
       {error && <StatusBanner type="error" message={error} />}
-      {loading && <StatusBanner type="loading" message="Parsing PowerPoint slides..." />}
+      {loading && <StatusBanner type="loading" message="Rendering PowerPoint slides with pptx-preview..." />}
 
-      {presentation && slide && (
+      {files.length > 0 && (
         <div className="border border-[#E5E5E5] bg-white">
-          <div className="bg-[#F5F5F5] border-b border-[#E5E5E5] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                disabled={activeSlide <= 0}
-                onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
-                className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Prev
-              </button>
-              <span className="px-3 text-xs font-mono text-[#222222]">
-                Slide {activeSlide + 1} / {presentation.slides.length}
-              </span>
-              <button
-                type="button"
-                disabled={activeSlide >= presentation.slides.length - 1}
-                onClick={() => setActiveSlide((s) => Math.min(presentation.slides.length - 1, s + 1))}
-                className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
-              >
-                Next
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="df-btn-light px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerBlobDownload(files[0], files[0].name)}
-                className="df-btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Download PPTX
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12">
-            {/* Slide Thumbnails List */}
-            <aside className="lg:col-span-3 border-b lg:border-b-0 lg:border-r border-[#E5E5E5] bg-[#F5F5F5] p-2.5 max-h-60 lg:max-h-[540px] overflow-y-auto flex lg:flex-col gap-2">
-              {presentation.slides.map((s, idx) => (
+          {slideCount > 0 && (
+            <div className="bg-[#F5F5F5] border-b border-[#E5E5E5] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
                 <button
-                  key={idx}
                   type="button"
-                  onClick={() => setActiveSlide(idx)}
-                  className={`text-left p-2 border shrink-0 w-36 lg:w-full cursor-pointer ${
-                    idx === activeSlide
-                      ? 'bg-[#222222] text-white border-[#222222]'
-                      : 'bg-white text-[#222222] border-[#E5E5E5] hover:border-[#222222]'
-                  }`}
+                  disabled={activeSlide <= 0}
+                  onClick={() => goToSlide(activeSlide - 1)}
+                  className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
                 >
-                  <div className="text-[11px] font-mono">Slide {idx + 1}</div>
-                  <div
-                    className={`text-xs truncate mt-0.5 ${
-                      idx === activeSlide ? 'text-[#E5E5E5]' : 'text-[#777777]'
-                    }`}
-                  >
-                    {s.elements.find((el) => el.text)?.text || 'Blank / Visual Slide'}
-                  </div>
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Prev
                 </button>
-              ))}
-            </aside>
-
-            {/* Active Slide Stage */}
-            <div
-              ref={stageRef}
-              className="lg:col-span-9 bg-[#E5E5E5] p-4 sm:p-6 flex flex-col items-center justify-center"
-            >
-              <div
-                className="relative w-full border border-[#CCCCCC] overflow-hidden"
-                style={{
-                  maxWidth: isFullscreen ? '1200px' : '840px',
-                  aspectRatio: `${presentation.widthPx} / ${presentation.heightPx}`,
-                  backgroundColor: slide.backgroundColor || '#FFFFFF',
-                }}
-              >
-                {slide.elements.map((el) => (
-                  <div
-                    key={el.id}
-                    className="absolute overflow-hidden"
-                    style={{
-                      left: `${el.x}%`,
-                      top: `${el.y}%`,
-                      width: `${el.w}%`,
-                      height: `${el.h}%`,
-                      backgroundColor: el.type === 'shape' ? el.fillColor : undefined,
-                      border: el.strokeColor ? `1px solid ${el.strokeColor}` : undefined,
-                    }}
-                  >
-                    {el.type === 'image' && el.imageUrl && (
-                      <img
-                        src={el.imageUrl}
-                        alt="Slide visual"
-                        className="w-full h-full object-contain"
-                      />
-                    )}
-                    {el.paragraphs && el.paragraphs.length > 0 && (
-                      <div className="w-full h-full p-1.5 flex flex-col justify-start">
-                        {el.paragraphs.map((p, pIdx) => (
-                          <p
-                            key={pIdx}
-                            style={{
-                              fontSize: `${Math.max(10, Math.round((p.fontSizePx || 16) * 0.85))}px`,
-                              fontWeight: p.bold ? 700 : 400,
-                              fontStyle: p.italic ? 'italic' : 'normal',
-                              color: p.color || '#222222',
-                              textAlign: p.align || 'left',
-                              lineHeight: 1.25,
-                            }}
-                          >
-                            {p.text}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <span className="px-3 text-xs font-mono text-[#222222]">
+                  Slide {activeSlide + 1} / {slideCount}
+                </span>
+                <button
+                  type="button"
+                  disabled={activeSlide >= slideCount - 1}
+                  onClick={() => goToSlide(activeSlide + 1)}
+                  className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                >
+                  Next
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              {isFullscreen && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="df-btn-light px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerBlobDownload(files[0], files[0].name)}
+                  className="df-btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download PPTX
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="df-btn-light px-2 py-1.5 text-xs cursor-pointer"
+                  title="Close file"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12">
+            {slideCount > 0 && (
+              <aside className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-[#E5E5E5] bg-[#F5F5F5] p-2.5 max-h-48 lg:max-h-[560px] overflow-y-auto flex lg:flex-col gap-1.5">
+                {Array.from({ length: slideCount }, (_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => goToSlide(idx)}
+                    className={`text-left px-2.5 py-2 border shrink-0 w-28 lg:w-full text-xs font-mono cursor-pointer ${
+                      idx === activeSlide
+                        ? 'bg-[#222222] text-white border-[#222222]'
+                        : 'bg-white text-[#222222] border-[#E5E5E5] hover:border-[#222222]'
+                    }`}
+                  >
+                    Slide {idx + 1}
+                  </button>
+                ))}
+              </aside>
+            )}
+
+            <div
+              ref={stageRef}
+              className={`${slideCount > 0 ? 'lg:col-span-10' : 'lg:col-span-12'} bg-[#E5E5E5] p-4 sm:p-6 flex flex-col items-center justify-center overflow-auto`}
+            >
+              <div
+                ref={previewWrapRef}
+                className="w-full max-w-[960px] bg-white border border-[#CCCCCC] overflow-hidden flex items-center justify-center"
+              />
+
+              {isFullscreen && slideCount > 0 && (
                 <div className="mt-4 flex items-center gap-2 bg-white border border-[#222222] px-3 py-1.5">
                   <button
                     type="button"
                     disabled={activeSlide <= 0}
-                    onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
+                    onClick={() => goToSlide(activeSlide - 1)}
                     className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
                   >
                     Prev
                   </button>
                   <span className="text-xs font-mono">
-                    {activeSlide + 1} / {presentation.slides.length}
+                    {activeSlide + 1} / {slideCount}
                   </span>
                   <button
                     type="button"
-                    disabled={activeSlide >= presentation.slides.length - 1}
-                    onClick={() => setActiveSlide((s) => Math.min(presentation.slides.length - 1, s + 1))}
+                    disabled={activeSlide >= slideCount - 1}
+                    onClick={() => goToSlide(activeSlide + 1)}
                     className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
                   >
                     Next

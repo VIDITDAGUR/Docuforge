@@ -10,6 +10,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
+from .libreoffice import convert_with_libreoffice
 
 
 EMU_PER_PT = 12700.0
@@ -46,6 +47,9 @@ def _extract_fill_hex(fill) -> str | None:
 
 
 def convert_pptx_to_pdf(pptx_path: Path, output_path: Path) -> None:
+    if convert_with_libreoffice(pptx_path, output_path, "pdf"):
+        return
+
     prs = Presentation(pptx_path)
     slide_w_pt = _emu_to_pt(prs.slide_width) or 960.0
     slide_h_pt = _emu_to_pt(prs.slide_height) or 540.0
