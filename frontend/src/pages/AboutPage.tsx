@@ -22,7 +22,7 @@ export const AboutPage: React.FC = () => {
             <div className="border border-[#E5E5E5] bg-[#F5F5F5] p-3.5">
               <div className="font-semibold text-[#222222] mb-1">Local Browser Processing</div>
               <p className="text-[#777777] leading-relaxed">
-                PDF Viewer, PDF Editor, PDF Resizer, Image to PDF, PDF to Image, Word Editor (DOCX export), PPTX Viewer, and PPTX Editor run entirely in your browser. Files never leave your computer.
+                PDF Viewer, PDF Editor, PDF Resizer, Image to PDF, PDF to Image, Image Compressor, Word Editor (DOCX export), and PPTX Viewer run entirely in your browser. Files never leave your computer.
               </p>
             </div>
             <div className="border border-[#E5E5E5] bg-[#F5F5F5] p-3.5">

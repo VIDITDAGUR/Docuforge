@@ -277,3 +277,53 @@ def test_word_compressor_shrinks_image_docx():
     assert res.status_code == 200
     assert res.content.startswith(b"PK\x03\x04")
     assert len(res.content) < len(raw_docx)
+
+
+def test_pptx_to_pdf_handles_groups_tables_and_images():
+    from PIL import Image
+    from pptx.enum.shapes import MSO_SHAPE
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    # Group containing a rectangle and textbox
+    grp = slide.shapes.add_group_shape()
+    grp.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.5), Inches(4.0), Inches(1.0))
+    tb = grp.shapes.add_textbox(Inches(0.6), Inches(0.6), Inches(3.8), Inches(0.8))
+    tb.text_frame.text = "Grouped Slide Text"
+
+    # Table
+    tbl_shape = slide.shapes.add_table(2, 2, Inches(0.5), Inches(2.0), Inches(5.0), Inches(1.2))
+    tbl_shape.table.cell(0, 0).text = "Metric"
+    tbl_shape.table.cell(0, 1).text = "Value"
+    tbl_shape.table.cell(1, 0).text = "Latency"
+    tbl_shape.table.cell(1, 1).text = "12ms"
+
+    # Picture
+    img = Image.new("RGB", (120, 80), (40, 90, 160))
+    img_buf = BytesIO()
+    img.save(img_buf, format="PNG")
+    img_buf.seek(0)
+    slide.shapes.add_picture(img_buf, Inches(6.0), Inches(2.0), Inches(2.0), Inches(1.3))
+
+    buf = BytesIO()
+    prs.save(buf)
+
+    res = client.post(
+        "/api/convert/pptx-to-pdf",
+        files={
+            "file": (
+                "complex.pptx",
+                buf.getvalue(),
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            )
+        },
+    )
+    assert res.status_code == 200
+    assert res.content.startswith(b"%PDF-")
+    with fitz.open(stream=res.content, filetype="pdf") as pdf:
+        assert len(pdf) == 1
+        txt = pdf[0].get_text()
+        assert "Grouped Slide Text" in txt
+        assert "Metric" in txt
+        assert "12ms" in txt

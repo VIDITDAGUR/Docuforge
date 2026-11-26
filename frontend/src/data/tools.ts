@@ -154,21 +154,6 @@ export const TOOLS: ToolDefinition[] = [
     processingMode: 'local',
     theme: { bg: '#F2F3F5', hoverBg: '#E5E7EB', border: '#CCD0D7', tagBg: '#E5E7EB' },
   },
-  {
-    id: 'pptx-editor',
-    slug: 'pptx-editor',
-    name: 'PPTX Editor',
-    category: 'presentation',
-    groupLabel: 'Document Editors',
-    description: 'Create or edit slides, add text boxes and shapes, change slide backgrounds, and export to PPTX.',
-    acceptedExtensions: ['.pptx'],
-    acceptedMimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-    formatsLabel: 'Blank or PowerPoint (.pptx)',
-    maxSizeMB: 30,
-    allowBlankStart: true,
-    processingMode: 'local',
-    theme: { bg: '#F7F4EC', hoverBg: '#EFEAD9', border: '#DCD3BA', tagBg: '#EFEAD9' },
-  },
 
   // PDF & DOCUMENT UTILITIES
   {

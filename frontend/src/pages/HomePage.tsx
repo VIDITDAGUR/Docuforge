@@ -98,8 +98,8 @@ export const HomePage: React.FC = () => {
                 <Link to="/tools/word-editor" className="df-btn-light px-2.5 py-1">
                   New Document
                 </Link>
-                <Link to="/tools/pptx-editor" className="df-btn-light px-2.5 py-1">
-                  New Presentation
+                <Link to="/tools/pptx-viewer" className="df-btn-light px-2.5 py-1">
+                  PPTX Viewer
                 </Link>
               </div>
             </div>

@@ -18,7 +18,7 @@ export const Footer: React.FC = () => {
             <ul className="space-y-1.5 text-xs">
               <li>
                 <Link to="/tools" className="text-[#777777] hover:text-[#222222]">
-                  All Tools (15)
+                  All Tools (14)
                 </Link>
               </li>
               <li>
