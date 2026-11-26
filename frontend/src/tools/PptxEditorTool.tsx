@@ -40,17 +40,52 @@ interface SlideItem {
   elements: SlideElement[];
 }
 
-function stripHtmlToPlainText(html: string): string {
-  if (!html) return '';
+function stripHtmlToDetails(html: string): {
+  text: string;
+  fontSizePt: number;
+  textColor: string;
+  bold: boolean;
+  align: 'left' | 'center' | 'right';
+} {
+  if (!html) {
+    return { text: '', fontSizePt: 18, textColor: '#222222', bold: false, align: 'left' };
+  }
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const blocks = Array.from(doc.body.querySelectorAll('p, div, li'));
-  if (blocks.length > 0) {
-    return blocks
-      .map((b) => (b.textContent || '').trim())
-      .filter(Boolean)
-      .join('\n');
+  const text =
+    blocks.length > 0
+      ? blocks
+          .map((b) => (b.textContent || '').trim())
+          .filter(Boolean)
+          .join('\n')
+      : (doc.body.textContent || '').trim();
+
+  let fontSizePt = 18;
+  const sizeMatch = html.match(/font-size:\s*(\d+(?:\.\d+)?)pt/i);
+  if (sizeMatch) {
+    const parsed = Math.round(Number(sizeMatch[1]));
+    if (parsed >= 8 && parsed <= 72) fontSizePt = parsed;
   }
-  return (doc.body.textContent || '').trim();
+
+  let textColor = '#222222';
+  const colorMatch = html.match(/color:\s*(#[0-9A-Fa-f]{6}|rgba?\([^)]+\))/i);
+  if (colorMatch) {
+    textColor = normalizeHex(colorMatch[1], '#222222');
+  }
+
+  const bold =
+    html.includes('font-weight: bold') ||
+    html.includes('font-weight:bold') ||
+    html.includes('<b>') ||
+    html.includes('<strong>');
+
+  const align: 'left' | 'center' | 'right' = html.includes('text-align: center')
+    ? 'center'
+    : html.includes('text-align: right')
+    ? 'right'
+    : 'left';
+
+  return { text, fontSizePt, textColor, bold, align };
 }
 
 function normalizeHex(color: string | undefined, fallback: string): string {
@@ -155,83 +190,160 @@ const PptxEditorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
             : '#FFFFFF';
 
         const elements: SlideElement[] = [];
-        for (let eIdx = 0; eIdx < (s.elements || []).length; eIdx++) {
-          const el = s.elements[eIdx];
-          const xPct = Math.max(0, Math.min(98, (el.left / slideW) * 100));
-          const yPct = Math.max(0, Math.min(98, (el.top / slideH) * 100));
-          const wPct = Math.max(2, Math.min(100, (el.width / slideW) * 100));
-          const hPct = Math.max(2, Math.min(100, (el.height / slideH) * 100));
 
-          if (el.type === 'image' && el.base64) {
-            elements.push({
-              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
-              kind: 'image',
-              xPct,
-              yPct,
-              wPct,
-              hPct,
-              text: '',
-              fontSizePt: 16,
-              bold: false,
-              align: 'left',
-              textColor: '#222222',
-              fillColor: 'transparent',
-              strokeColor: 'transparent',
-              imageData: el.base64,
-            });
-          } else if (el.type === 'text') {
-            const plain = stripHtmlToPlainText(el.content);
-            if (!plain) continue;
-            elements.push({
-              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
-              kind: 'text',
-              xPct,
-              yPct,
-              wPct,
-              hPct,
-              text: plain,
-              fontSizePt: 18,
-              bold: el.content.includes('bold') || el.content.includes('<b>') || el.content.includes('<strong>'),
-              align: el.content.includes('text-align: center')
-                ? 'center'
-                : el.content.includes('text-align: right')
-                ? 'right'
-                : 'left',
-              textColor: '#222222',
-              fillColor: 'transparent',
-              strokeColor: 'transparent',
-            });
-          } else if (el.type === 'shape') {
-            const plain = stripHtmlToPlainText(el.content || '');
-            const shapeFill =
-              el.fill?.type === 'color' ? normalizeHex(el.fill.value, '#F5F5F5') : 'transparent';
-            const shapeStroke = el.borderColor ? normalizeHex(el.borderColor, '#222222') : '#222222';
-            const kind: SlideElement['kind'] =
-              el.shapType === 'ellipse'
-                ? 'ellipse'
-                : el.shapType === 'line'
-                ? 'line'
-                : plain && shapeFill === 'transparent'
-                ? 'text'
-                : 'rect';
+        const pushParsedElements = (
+          rawList: unknown[],
+          offsetLeft = 0,
+          offsetTop = 0,
+          prefix = ''
+        ) => {
+          for (let eIdx = 0; eIdx < rawList.length; eIdx++) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const el = rawList[eIdx] as any;
+            if (!el) continue;
 
-            elements.push({
-              id: `el-${sIdx}-${eIdx}-${Date.now()}`,
-              kind,
-              xPct,
-              yPct,
-              wPct,
-              hPct,
-              text: plain,
-              fontSizePt: 16,
-              bold: false,
-              align: 'center',
-              textColor: '#222222',
-              fillColor: shapeFill,
-              strokeColor: shapeStroke,
-            });
+            const absLeft = (Number(el.left) || 0) + offsetLeft;
+            const absTop = (Number(el.top) || 0) + offsetTop;
+
+            if (el.type === 'group' && Array.isArray(el.elements)) {
+              pushParsedElements(el.elements, absLeft, absTop, `${prefix}g${eIdx}-`);
+              continue;
+            }
+            if (el.type === 'diagram' && Array.isArray(el.elements)) {
+              pushParsedElements(el.elements, absLeft, absTop, `${prefix}d${eIdx}-`);
+              continue;
+            }
+
+            const xPct = Math.max(0, Math.min(98, (absLeft / slideW) * 100));
+            const yPct = Math.max(0, Math.min(98, (absTop / slideH) * 100));
+            const wPct = Math.max(2, Math.min(100, ((Number(el.width) || 40) / slideW) * 100));
+            const hPct = Math.max(2, Math.min(100, ((Number(el.height) || 20) / slideH) * 100));
+            const uid = `el-${sIdx}-${prefix}${eIdx}-${Date.now()}`;
+
+            if (el.type === 'image' && el.base64) {
+              elements.push({
+                id: uid,
+                kind: 'image',
+                xPct,
+                yPct,
+                wPct,
+                hPct,
+                text: '',
+                fontSizePt: 16,
+                bold: false,
+                align: 'left',
+                textColor: '#222222',
+                fillColor: 'transparent',
+                strokeColor: 'transparent',
+                imageData: el.base64,
+              });
+            } else if (el.type === 'text') {
+              const info = stripHtmlToDetails(el.content || '');
+              if (!info.text) continue;
+              elements.push({
+                id: uid,
+                kind: 'text',
+                xPct,
+                yPct,
+                wPct,
+                hPct,
+                text: info.text,
+                fontSizePt: info.fontSizePt,
+                bold: info.bold,
+                align: info.align,
+                textColor: info.textColor,
+                fillColor: 'transparent',
+                strokeColor: 'transparent',
+              });
+            } else if (el.type === 'table' && Array.isArray(el.data)) {
+              const tableText = el.data
+                .map((row: Array<{ text?: string }>) =>
+                  row.map((cell) => stripHtmlToDetails(cell?.text || '').text || '').join(' | ')
+                )
+                .filter(Boolean)
+                .join('\n');
+              if (tableText) {
+                elements.push({
+                  id: uid,
+                  kind: 'rect',
+                  xPct,
+                  yPct,
+                  wPct,
+                  hPct,
+                  text: tableText,
+                  fontSizePt: 12,
+                  bold: false,
+                  align: 'left',
+                  textColor: '#222222',
+                  fillColor: '#F5F5F5',
+                  strokeColor: '#CCCCCC',
+                });
+              }
+            } else if (el.type === 'shape') {
+              if (el.fill?.type === 'image' && el.fill.value?.base64) {
+                elements.push({
+                  id: uid,
+                  kind: 'image',
+                  xPct,
+                  yPct,
+                  wPct,
+                  hPct,
+                  text: '',
+                  fontSizePt: 16,
+                  bold: false,
+                  align: 'left',
+                  textColor: '#222222',
+                  fillColor: 'transparent',
+                  strokeColor: 'transparent',
+                  imageData: el.fill.value.base64,
+                });
+                continue;
+              }
+              const info = stripHtmlToDetails(el.content || '');
+              const shapeFill =
+                el.fill?.type === 'color'
+                  ? normalizeHex(el.fill.value, '#F5F5F5')
+                  : el.fill?.type === 'gradient' && el.fill.value?.colors?.[0]
+                  ? normalizeHex(el.fill.value.colors[0].color, '#F5F5F5')
+                  : 'transparent';
+              const hasBorder = Number(el.borderWidth) > 0;
+              const shapeStroke = hasBorder
+                ? normalizeHex(el.borderColor, '#222222')
+                : 'transparent';
+              const kind: SlideElement['kind'] =
+                el.shapType === 'ellipse'
+                  ? 'ellipse'
+                  : el.shapType === 'line'
+                  ? 'line'
+                  : info.text && shapeFill === 'transparent' && !hasBorder
+                  ? 'text'
+                  : 'rect';
+
+              if (!info.text && shapeFill === 'transparent' && !hasBorder) continue;
+
+              elements.push({
+                id: uid,
+                kind,
+                xPct,
+                yPct,
+                wPct,
+                hPct,
+                text: info.text,
+                fontSizePt: info.fontSizePt,
+                bold: info.bold,
+                align: info.align,
+                textColor: info.textColor,
+                fillColor: shapeFill,
+                strokeColor: shapeStroke,
+              });
+            }
           }
+        };
+
+        if (Array.isArray(s.layoutElements) && s.layoutElements.length > 0) {
+          pushParsedElements(s.layoutElements, 0, 0, 'lay-');
         }
+        pushParsedElements(s.elements || []);
 
         return {
           id: `slide-${Date.now()}-${sIdx}`,
