@@ -16,6 +16,7 @@ from .converters.pdf_to_pptx import convert_pdf_to_pptx
 from .converters.editor_pdf import EditorBlock, render_editor_blocks_to_pdf
 from .converters.compressors import compress_docx, compress_pdf
 from .converters.libreoffice import find_libreoffice
+from .assignment.router import router as assignment_router
 from .services.pptx_viewer_service import (
     enqueue_pptx_job,
     get_pptx_job,
@@ -39,6 +40,8 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Original-Bytes", "X-Compressed-Bytes", "Content-Disposition"],
 )
+
+app.include_router(assignment_router)
 
 
 @app.get("/api/health")
