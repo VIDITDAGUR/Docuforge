@@ -1,7 +1,31 @@
 """Prompt templates for per-question answer generation and word-count rewrite retries."""
 
+from typing import Optional
+
 from .length_validator import WordRange
-from .models import AssignmentQuestion, CoursePreset
+from .models import AssignmentQuestion, CoursePreset, QuestionType
+
+
+def infer_question_type(text: str) -> QuestionType:
+    """Heuristically classify a free-form question when parser metadata is absent."""
+    low = (text or "").strip().lower()
+    if any(k in low for k in ("program", "code", "implement", "write a function", "sql query", "algorithm in ")):
+        return "code"
+    if any(k in low for k in ("derive ", "derivation", "prove that", "show that ")):
+        return "derivation"
+    if any(k in low for k in ("calculate ", "find the ", "numerical", "compute ", "evaluate ")):
+        return "numerical"
+    if any(k in low for k in ("compare ", "difference between", "differentiate ", "distinguish between", " vs ")):
+        return "compare"
+    if any(k in low for k in ("diagram", "block diagram", "neat sketch", "draw ")):
+        return "diagram"
+    if any(k in low for k in ("short note", "write notes on")):
+        return "short_note"
+    if any(k in low for k in ("case study", "scenario")):
+        return "case_study"
+    if low.startswith(("define ", "what is ", "what are ", "meaning of ")):
+        return "define"
+    return "explain"
 
 
 def build_system_prompt(course_name: str) -> str:
@@ -66,3 +90,28 @@ def build_retry_prompt(
         f"(allowed {min_words}-{max_words}), keeping the same content quality. "
         "Remember: output plain text only with no markdown or preamble."
     )
+
+
+def build_followup_prompt(
+    base_user_prompt: str,
+    previous_answer: Optional[str],
+    followup_instruction: str,
+    word_range: WordRange,
+    conversation_context: Optional[list[str]] = None,
+) -> str:
+    """Build a contextual follow-up prompt preserving marks-based word rules."""
+    parts = [base_user_prompt]
+    if conversation_context:
+        trimmed = [c.strip() for c in conversation_context if c and c.strip()][-4:]
+        if trimmed:
+            parts.append("Recent conversation context:\n" + "\n".join(f"- {c}" for c in trimmed))
+    if previous_answer and previous_answer.strip():
+        parts.append(f"Previous answer:\n{previous_answer.strip()}")
+    parts.append(
+        f"Follow-up instruction: {followup_instruction.strip()}\n"
+        f"Keep the revised answer strictly between {word_range.min_words} and {word_range.max_words} words "
+        f"(aim for about {word_range.target_words} words).\n"
+        "Remember: output plain text only (use fenced code blocks only if the question requires code), "
+        "no markdown headings or bold markers, and no greeting preamble."
+    )
+    return "\n\n".join(parts)

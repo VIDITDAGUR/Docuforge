@@ -3,7 +3,7 @@
 from pathlib import Path
 import tempfile
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from ..config import ASSIGNMENT_MAX_UPLOAD_MB, GEMINI_MODEL, get_gemini_api_key
@@ -14,19 +14,30 @@ from .generator import (
     enqueue_generation_job,
     generate_single_answer,
     get_generation_job,
+    stream_answer_sse,
 )
-from .models import ExportRequest, GenerationRequest, ParseResponse, RegenerateRequest
+from .models import (
+    AssignmentQuestion,
+    ChatSingleRequest,
+    ExportRequest,
+    GenerationRequest,
+    ParseResponse,
+    QuestionType,
+    RegenerateRequest,
+    StreamAnswerRequest,
+)
 from .presets import get_preset, load_preset_catalog
+from .prompt_builder import infer_question_type
 from .question_parser import parse_assignment_questions
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 AVAILABLE_MODELS = [
-    {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash (Recommended)"},
-    {"id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite (Fast / High-Quota)"},
+    {"id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite (Fast / Recommended)"},
+    {"id": "gemini-3.1-flash-lite", "label": "Gemini 3.1 Flash-Lite (High-Quota)"},
+    {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
     {"id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash"},
     {"id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash"},
-    {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
 ]
 
 
@@ -163,4 +174,116 @@ def export_assignment_docx_endpoint(payload: ExportRequest):
         filename=out_name,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         background=BackgroundTask(cleanup_dir, temp_dir),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat / Streaming endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/chat/stream")
+async def stream_single_answer_endpoint(payload: StreamAnswerRequest):
+    """Stream a single question answer or contextual follow-up as Server-Sent Events (SSE)."""
+    if not get_gemini_api_key():
+        raise HTTPException(
+            status_code=503,
+            detail="GEMINI_API_KEY is not configured on the server. Set GEMINI_API_KEY in .env.",
+        )
+    try:
+        preset = get_preset(payload.preset_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.question.marks is None or payload.question.marks <= 0:
+        raise HTTPException(
+            status_code=422, detail="Question must have positive marks to generate an answer."
+        )
+
+    model_name = (payload.model or GEMINI_MODEL).strip() or GEMINI_MODEL
+
+    return StreamingResponse(
+        stream_answer_sse(
+            question=payload.question,
+            preset=preset,
+            subject_hint=payload.subject_hint,
+            words_per_mark_min=payload.words_per_mark_min,
+            words_per_mark_max=payload.words_per_mark_max,
+            target_min_words=payload.target_min_words,
+            target_max_words=payload.target_max_words,
+            model_name=model_name,
+            bypass_cache=payload.bypass_cache,
+            previous_answer=payload.previous_answer,
+            followup_instruction=payload.followup_instruction,
+            conversation_context=payload.conversation_context,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+_VALID_QUESTION_TYPES: set[str] = {
+    "define",
+    "explain",
+    "compare",
+    "numerical",
+    "code",
+    "derivation",
+    "diagram",
+    "short_note",
+    "case_study",
+    "other",
+}
+
+
+@router.post("/chat/single")
+async def chat_single_question_endpoint(payload: ChatSingleRequest):
+    """Stream an answer for a free-form typed question as SSE."""
+    if not get_gemini_api_key():
+        raise HTTPException(
+            status_code=503,
+            detail="GEMINI_API_KEY is not configured on the server. Set GEMINI_API_KEY in .env.",
+        )
+    try:
+        preset = get_preset(payload.preset_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    resolved_type: QuestionType = (
+        payload.question_type  # type: ignore[assignment]
+        if payload.question_type in _VALID_QUESTION_TYPES
+        else infer_question_type(payload.question_text)
+    )
+    question = AssignmentQuestion(
+        id="Q_chat",
+        number="1",
+        part="",
+        text=payload.question_text,
+        marks=payload.marks,
+        type=resolved_type,
+        confidence=1.0,
+        needs_review=False,
+    )
+    model_name = (payload.model or GEMINI_MODEL).strip() or GEMINI_MODEL
+
+    return StreamingResponse(
+        stream_answer_sse(
+            question=question,
+            preset=preset,
+            subject_hint=payload.subject_hint,
+            words_per_mark_min=payload.words_per_mark_min,
+            words_per_mark_max=payload.words_per_mark_max,
+            model_name=model_name,
+            bypass_cache=payload.bypass_cache,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )

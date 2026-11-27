@@ -138,3 +138,34 @@ class ExportRequest(BaseModel):
     subject_hint: str = ""
     profile: StudentProfile = Field(default_factory=StudentProfile)
     items: list[GeneratedAnswerItem]
+
+
+class StreamAnswerRequest(BaseModel):
+    """Request payload to stream a single answer or contextual follow-up over SSE."""
+
+    question: AssignmentQuestion
+    preset_id: str
+    subject_hint: str = ""
+    words_per_mark_min: Optional[int] = Field(default=None, ge=5, le=200)
+    words_per_mark_max: Optional[int] = Field(default=None, ge=5, le=250)
+    target_min_words: Optional[int] = Field(default=None, ge=10, le=5000)
+    target_max_words: Optional[int] = Field(default=None, ge=10, le=5000)
+    model: Optional[str] = None
+    bypass_cache: bool = False
+    previous_answer: Optional[str] = None
+    followup_instruction: Optional[str] = None
+    conversation_context: list[str] = Field(default_factory=list)
+
+
+class ChatSingleRequest(BaseModel):
+    """Request to generate an answer for a free-form typed question."""
+
+    question_text: str
+    marks: float = Field(default=5.0, ge=0.5, le=100.0)
+    question_type: str = "auto"
+    preset_id: str
+    subject_hint: str = ""
+    words_per_mark_min: Optional[int] = Field(default=None, ge=5, le=200)
+    words_per_mark_max: Optional[int] = Field(default=None, ge=5, le=250)
+    model: Optional[str] = None
+    bypass_cache: bool = False

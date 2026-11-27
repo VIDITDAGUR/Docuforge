@@ -1,8 +1,10 @@
 """Unit and API tests for the marks-based assignment answer generator."""
 
 from io import BytesIO
+import json
 from pathlib import Path
 from types import SimpleNamespace
+import asyncio
 from docx import Document
 from fastapi.testclient import TestClient
 from google.genai import errors as genai_errors
@@ -11,7 +13,11 @@ import pymupdf as fitz
 
 from app.assignment.cache import AssignmentAnswerCache
 from app.assignment.file_ingest import extract_assignment_input
-from app.assignment.generator import call_with_exponential_backoff, generate_single_answer
+from app.assignment.generator import (
+    call_with_exponential_backoff,
+    generate_single_answer,
+    stream_answer_sse,
+)
 from app.assignment.length_validator import (
     calculate_word_range,
     count_explanation_words,
@@ -19,6 +25,7 @@ from app.assignment.length_validator import (
 )
 from app.assignment.models import AssignmentQuestion, ExportRequest, GeneratedAnswerItem, StudentProfile
 from app.assignment.presets import get_preset, load_preset_catalog
+from app.assignment.prompt_builder import infer_question_type
 from app.assignment.question_parser import (
     RawParsedQuestion,
     detect_marks_in_text,
@@ -382,3 +389,156 @@ def test_export_pdf_and_docx_include_student_header():
     header_text = doc.sections[0].header.paragraphs[0].text
     assert "Submitted by: Aditi Sharma | Roll No.: CS2104" in header_text
     assert any("Q1. [2 Marks]" in p.text for p in doc.paragraphs)
+
+
+# ---------------------------------------------------------------------------
+# 6. SSE Streaming, 429 Retry, Cache Hit, and Follow-up Tests
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_async_client(stream_plans: list[object]):
+    recorded: list[dict] = []
+    queue = list(stream_plans)
+
+    async def _generate_content_stream(*, model, contents, config=None):
+        recorded.append({"model": model, "contents": contents, "config": config})
+        plan = queue.pop(0)
+        if isinstance(plan, Exception):
+            raise plan
+
+        async def _iter():
+            for chunk_text in plan:
+                yield SimpleNamespace(text=chunk_text)
+
+        return _iter()
+
+    aio_models = SimpleNamespace(generate_content_stream=_generate_content_stream)
+    return SimpleNamespace(aio=SimpleNamespace(models=aio_models)), recorded
+
+
+def _parse_sse_events(raw_chunks: list[str]) -> list[dict]:
+    events = []
+    for raw in raw_chunks:
+        for line in raw.splitlines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+    return events
+
+
+def test_stream_answer_sse_tokens_metrics_and_cache(tmp_path):
+    preset = get_preset("btech-cse")
+    q = AssignmentQuestion(id="Q1", number="1", text="Define paging.", marks=1, type="define")
+    # 1 mark -> range [30, 40]. Stream 34 words cleanly across 2 chunks.
+    words = ["memory"] * 34
+    part1 = " ".join(words[:17]) + " "
+    part2 = " ".join(words[17:])
+
+    fake_client, calls = _make_fake_async_client([[part1, part2]])
+    cache = AssignmentAnswerCache(cache_dir=tmp_path)
+
+    async def _collect(use_client):
+        chunks = []
+        async for line in stream_answer_sse(
+            question=q,
+            preset=preset,
+            client=use_client,
+            cache=cache,
+        ):
+            chunks.append(line)
+        return _parse_sse_events(chunks)
+
+    events = asyncio.run(_collect(fake_client))
+    token_text = "".join(e["text"] for e in events if e["type"] == "token")
+    done_ev = [e for e in events if e["type"] == "done"][-1]
+
+    assert len(calls) == 1
+    assert token_text.strip() == (part1 + part2).strip()
+    assert done_ev["word_count"] == 34
+    assert (done_ev["min_words"], done_ev["max_words"]) == (30, 40)
+    assert done_ev["length_warning"] is False
+    assert done_ev["cached"] is False
+    assert done_ev["estimated_lines"] == 4
+
+    # Repeat call must stream straight from disk cache with zero Gemini calls
+    empty_client, calls_cached = _make_fake_async_client([])
+    events_cached = asyncio.run(_collect(empty_client))
+    done_cached = [e for e in events_cached if e["type"] == "done"][-1]
+    assert len(calls_cached) == 0
+    assert done_cached["cached"] is True
+    assert done_cached["word_count"] == 34
+
+
+def test_stream_answer_sse_429_rate_limit_backoff_and_followup(tmp_path):
+    preset = get_preset("btech-cse")
+    q = AssignmentQuestion(id="Q3", number="3", text="Explain deadlock.", marks=2, type="explain")
+
+    err_429 = genai_errors.APIError(429, {"error": {"message": "Rate limit"}}, None)
+    revised_words = " ".join(["deadlock"] * 65)  # inside 2-mark [60, 80]
+
+    fake_client, calls = _make_fake_async_client([err_429, [revised_words]])
+    cache = AssignmentAnswerCache(cache_dir=tmp_path)
+    sleep_delays: list[float] = []
+
+    async def _fake_sleep(delay: float):
+        sleep_delays.append(delay)
+
+    async def _collect():
+        chunks = []
+        async for line in stream_answer_sse(
+            question=q,
+            preset=preset,
+            previous_answer="Deadlock happens when processes wait forever.",
+            followup_instruction="add an example",
+            conversation_context=["User: Explain deadlock", "Q3 (2M): Explain deadlock."],
+            client=fake_client,
+            cache=cache,
+            async_sleep_fn=_fake_sleep,
+        ):
+            chunks.append(line)
+        return _parse_sse_events(chunks)
+
+    events = asyncio.run(_collect())
+    rate_events = [e for e in events if e["type"] == "rate_limited"]
+    done_ev = [e for e in events if e["type"] == "done"][-1]
+
+    assert len(calls) == 2
+    assert len(sleep_delays) == 1
+    assert sleep_delays[0] == 1.5
+    assert "Rate limited, retrying" in rate_events[0]["message"]
+    assert "Previous answer:" in calls[1]["contents"]
+    assert "add an example" in calls[1]["contents"]
+    assert done_ev["length_warning"] is False
+
+
+def test_chat_stream_endpoints_validate_and_infer_type(monkeypatch):
+    monkeypatch.setattr("app.assignment.router.get_gemini_api_key", lambda: "test-key")
+    assert infer_question_type("Write a C program for binary search") == "code"
+    assert infer_question_type("Compare TCP and UDP") == "compare"
+    assert infer_question_type("Define virtual memory") == "define"
+
+    async def _mock_sse(**kwargs):
+        yield f"data: {json.dumps({'type': 'token', 'text': 'Paging maps memory.', 'question_id': kwargs['question'].id})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'question_id': kwargs['question'].id, 'word_count': 3, 'explanation_word_count': 3, 'estimated_lines': 1, 'min_words': 60, 'max_words': 80, 'length_warning': True, 'cached': False})}\n\n"
+
+    monkeypatch.setattr("app.assignment.router.stream_answer_sse", _mock_sse)
+
+    res = client.post(
+        "/api/assignments/chat/single",
+        json={
+            "question_text": "Write a Python function for DFS",
+            "marks": 5,
+            "preset_id": "btech-cse",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/event-stream")
+    assert '"type": "done"' in res.text
+
+    bad_stream = client.post(
+        "/api/assignments/chat/stream",
+        json={
+            "question": {"id": "Q1", "number": "1", "text": "Define OS", "marks": None},
+            "preset_id": "btech-cse",
+        },
+    )
+    assert bad_stream.status_code == 422

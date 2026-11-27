@@ -24,7 +24,7 @@ DOCUFORGE is a free, open-source document utility workspace designed for college
 11. **PDF Compressor** — Shrink PDF size with percentage (`10%–85%`) compression control.
 12. **Word Compressor** — Optimize embedded `.docx` media and ZIP deflate level with percentage (`10%–85%`) control.
 13. **Image Compressor** — Compress JPG, PNG, and WebP images locally in the browser with `%` control and ZIP export.
-14. **Assignment Answer Generator** — Upload an assignment sheet (PDF, `.docx`, `.png`, `.jpg`), review and confirm extracted questions & marks, generate course-tailored answers via Google Gemini sized by marks (`30–40 words/mark` default), and export notebook-ready PDF or `.docx` with page headers.
+14. **Assignment Answer Generator** — ChatGPT-style streaming interface: upload an assignment sheet (PDF, `.docx`, `.png`, `.jpg`) or type questions directly, edit marks inline, stream course-tailored answers via Google Gemini SSE sized by marks (`30–40 words/mark` default), run contextual follow-ups or one-click length adjustments, and optionally copy all or export notebook-ready PDF/DOCX.
 
 ## Marks-Based Assignment Answer Generator Setup & Customization
 
@@ -37,9 +37,9 @@ DOCUFORGE is a free, open-source document utility workspace designed for college
 3. Add your key and optional model override in `.env`:
    ```dotenv
    GEMINI_API_KEY=your_actual_key_here
-   DOCUFORGE_GEMINI_MODEL=gemini-3.8-flash
+   DOCUFORGE_GEMINI_MODEL=gemini-3.5-flash-lite
    ```
-   Supported models configurable via `DOCUFORGE_GEMINI_MODEL` or the UI include `gemini-3.8-flash` (default) and `gemini-3.5-flash-lite`.
+   Supported Flash models configurable via `DOCUFORGE_GEMINI_MODEL` or UI Settings include `gemini-3.5-flash-lite` (default, high-quota), `gemini-3.1-flash-lite`, `gemini-3.5-flash`, `gemini-3.6-flash`, and `gemini-3.8-flash`.
 
 ### 2. Adding a New Course Preset
 All course sections (`B.Tech`, `Commerce`, `Management`, `Computer Applications`, `Design`, `Science`, `Arts and Humanities`, `Law`, `Other`) live in `backend/app/assignment/presets_config.json`. Add a new object under `"presets"`:

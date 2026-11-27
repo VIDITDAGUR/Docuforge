@@ -30,7 +30,12 @@ from .models import (
     TokenUsage,
 )
 from .presets import get_preset, load_preset_catalog, resolve_length_rules
-from .prompt_builder import build_retry_prompt, build_system_prompt, build_user_prompt
+from .prompt_builder import (
+    build_followup_prompt,
+    build_retry_prompt,
+    build_system_prompt,
+    build_user_prompt,
+)
 
 logger = logging.getLogger("docuforge.assignment.generator")
 
@@ -448,3 +453,240 @@ def get_generation_job(job_id: str) -> Optional[dict[str, Any]]:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
         return dict(job) if job else None
+
+
+def _is_fix_length_instruction(followup_instruction: Optional[str]) -> bool:
+    low = (followup_instruction or "").strip().lower()
+    return low.startswith("fix length") or "fix the length" in low or "within the word range" in low
+
+
+async def stream_answer_sse(
+    question: AssignmentQuestion,
+    preset: CoursePreset,
+    subject_hint: str = "",
+    words_per_mark_min: Optional[int] = None,
+    words_per_mark_max: Optional[int] = None,
+    target_min_words: Optional[int] = None,
+    target_max_words: Optional[int] = None,
+    model_name: str = GEMINI_MODEL,
+    bypass_cache: bool = False,
+    previous_answer: Optional[str] = None,
+    followup_instruction: Optional[str] = None,
+    conversation_context: Optional[list[str]] = None,
+    client: Optional[genai.Client] = None,
+    cache: Optional[AssignmentAnswerCache] = None,
+    async_sleep_fn: Optional[Callable[[float], Any]] = None,
+) -> Any:
+    """
+    Async generator that yields SSE-formatted data lines for a single answer or follow-up.
+
+    Uses ``client.aio.models.generate_content_stream`` so concurrent SSE requests
+    do not block FastAPI's event loop.
+
+    Event types emitted as ``data: {json}\\n\\n``:
+    - ``token``        — incremental text chunk
+    - ``rate_limited`` — transient HTTP 429 retry notice (includes ``reset`` flag)
+    - ``done``         — completion payload with word counts, bounds, and estimated lines
+    - ``error``        — terminal error message
+    """
+    import asyncio
+    import json as _json
+
+    sleep_impl = async_sleep_fn or asyncio.sleep
+    marks = float(question.marks or 5.0)
+    catalog = load_preset_catalog()
+    w_min, w_max, config_overrides = resolve_length_rules(
+        preset, catalog=catalog, custom_min=words_per_mark_min, custom_max=words_per_mark_max
+    )
+
+    if target_min_words is not None and target_max_words is not None:
+        lo = max(10, min(int(target_min_words), int(target_max_words)))
+        hi = max(lo, max(int(target_min_words), int(target_max_words)))
+        word_range = WordRange(min_words=lo, max_words=hi, target_words=(lo + hi) // 2)
+    else:
+        word_range = calculate_word_range(
+            marks,
+            words_per_mark_min=w_min,
+            words_per_mark_max=w_max,
+            explicit_overrides=config_overrides,
+        )
+
+    is_fix_length = _is_fix_length_instruction(followup_instruction)
+    is_custom_followup = bool(
+        (followup_instruction and not is_fix_length)
+        or (previous_answer and not is_fix_length)
+        or target_min_words is not None
+        or target_max_words is not None
+    )
+
+    answer_cache = cache or AssignmentAnswerCache()
+    cache_key = make_cache_key(
+        question_text=question.text,
+        marks=marks,
+        preset_id=preset.id,
+        model=model_name,
+        subject_hint=subject_hint,
+        words_per_mark_min=word_range.min_words,
+        words_per_mark_max=word_range.max_words,
+        question_type=question.type,
+    )
+
+    # Emit initial SSE comment frame immediately so response headers flush to the client.
+    yield ": stream-open\n\n"
+
+    # --- Base cache check (standard requests only) ---
+    if not bypass_cache and not is_custom_followup and not is_fix_length:
+        cached_payload = answer_cache.get(cache_key)
+        if cached_payload and cached_payload.get("answer"):
+            full_text: str = cached_payload["answer"]
+            chunk_size = 48
+            for i in range(0, len(full_text), chunk_size):
+                chunk = full_text[i : i + chunk_size]
+                yield f"data: {_json.dumps({'type': 'token', 'text': chunk, 'question_id': question.id})}\n\n"
+                await asyncio.sleep(0)
+
+            expl_wc = int(cached_payload.get("explanation_word_count", 0))
+            total_wc = int(cached_payload.get("total_word_count", 0))
+            est_lines = int(cached_payload.get("estimated_lines", estimate_handwritten_lines(total_wc)))
+            length_warning = bool(
+                cached_payload.get("length_warning", not is_within_range(expl_wc, word_range))
+            )
+            yield f"data: {_json.dumps({'type': 'done', 'question_id': question.id, 'text': full_text, 'word_count': total_wc, 'explanation_word_count': expl_wc, 'estimated_lines': est_lines, 'min_words': word_range.min_words, 'max_words': word_range.max_words, 'target_words': word_range.target_words, 'length_warning': length_warning, 'cached': True})}\n\n"
+            return
+
+    # --- Build prompt (standard, Fix length, or contextual follow-up) ---
+    owns_client = client is None
+    active_client = client
+    if active_client is None:
+        api_key = get_gemini_api_key()
+        if not api_key:
+            yield f"data: {_json.dumps({'type': 'error', 'message': 'GEMINI_API_KEY is not configured. Add it to .env on the server.', 'question_id': question.id})}\n\n"
+            return
+        active_client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=35_000),
+        )
+
+    sys_prompt = build_system_prompt(preset.course_name)
+    base_user_prompt = build_user_prompt(question, preset, subject_hint, word_range)
+
+    if is_fix_length and previous_answer:
+        prev_expl, _ = count_explanation_words(previous_answer, question.type)
+        retry_msg = build_retry_prompt(
+            word_count=prev_expl,
+            target_words=word_range.target_words,
+            min_words=word_range.min_words,
+            max_words=word_range.max_words,
+        )
+        prompt_contents = (
+            f"{base_user_prompt}\n\n"
+            f"Previous answer:\n{previous_answer.strip()}\n\n"
+            f"Instruction: {retry_msg}"
+        )
+    elif followup_instruction:
+        prompt_contents = build_followup_prompt(
+            base_user_prompt=base_user_prompt,
+            previous_answer=previous_answer,
+            followup_instruction=followup_instruction,
+            word_range=word_range,
+            conversation_context=conversation_context,
+        )
+    else:
+        prompt_contents = base_user_prompt
+
+    accumulated = ""
+    max_tries = 4
+    base_delay = 1.5
+
+    try:
+        for attempt in range(max_tries):
+            try:
+                stream = await asyncio.wait_for(
+                    active_client.aio.models.generate_content_stream(
+                        model=model_name,
+                        contents=prompt_contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=sys_prompt,
+                            temperature=0.35,
+                        ),
+                    ),
+                    timeout=35.0,
+                )
+                had_partial = bool(accumulated)
+                accumulated = ""
+                stream_iter = stream.__aiter__()
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(stream_iter.__anext__(), timeout=25.0)
+                    except StopAsyncIteration:
+                        break
+                    chunk_text = getattr(chunk, "text", None) or ""
+                    if chunk_text:
+                        if had_partial:
+                            yield f"data: {_json.dumps({'type': 'rate_limited', 'message': '', 'reset': True, 'question_id': question.id})}\n\n"
+                            had_partial = False
+                        accumulated += chunk_text
+                        yield f"data: {_json.dumps({'type': 'token', 'text': chunk_text, 'question_id': question.id})}\n\n"
+                break
+            except genai_errors.APIError as exc:
+                code = getattr(exc, "code", None)
+                if code in _TRANSIENT_HTTP_CODES and attempt < max_tries - 1:
+                    delay = base_delay * (2**attempt)
+                    msg = (
+                        f"Rate limited, retrying in {delay:.1f}s..."
+                        if code == 429
+                        else f"Temporary model issue (HTTP {code}), retrying in {delay:.1f}s..."
+                    )
+                    yield f"data: {_json.dumps({'type': 'rate_limited', 'message': msg, 'reset': bool(accumulated), 'question_id': question.id})}\n\n"
+                    await sleep_impl(delay)
+                    continue
+                err_msg = (
+                    "Rate limit exceeded after retries. Please try again shortly."
+                    if code == 429
+                    else f"Gemini API error (HTTP {code}): {exc}"
+                )
+                yield f"data: {_json.dumps({'type': 'error', 'message': err_msg, 'question_id': question.id})}\n\n"
+                return
+            except (asyncio.TimeoutError, ConnectionError, TimeoutError, OSError) as exc:
+                if attempt < max_tries - 1:
+                    delay = base_delay * (2**attempt)
+                    reason = "Model timed out" if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) else "Connection interrupted"
+                    yield f"data: {_json.dumps({'type': 'rate_limited', 'message': f'{reason}, retrying in {delay:.1f}s...', 'reset': bool(accumulated), 'question_id': question.id})}\n\n"
+                    await sleep_impl(delay)
+                    continue
+                yield f"data: {_json.dumps({'type': 'error', 'message': f'Request timed out or lost connection contacting Gemini: {exc}', 'question_id': question.id})}\n\n"
+                return
+            except Exception as exc:
+                yield f"data: {_json.dumps({'type': 'error', 'message': str(exc), 'question_id': question.id})}\n\n"
+                return
+    finally:
+        if owns_client and getattr(active_client, "aio", None) is not None:
+            try:
+                await active_client.aio.aclose()
+            except Exception:
+                pass
+
+    if not accumulated.strip():
+        yield f"data: {_json.dumps({'type': 'error', 'message': 'Gemini returned an empty answer.', 'question_id': question.id})}\n\n"
+        return
+
+    cleaned = _clean_generated_text(accumulated, question.type)
+    expl_wc, total_wc = count_explanation_words(cleaned, question.type)
+    est_lines = estimate_handwritten_lines(total_wc)
+    length_warning = not is_within_range(expl_wc, word_range)
+
+    # Cache base answers (and improved Fix-length results that landed inside range)
+    if (not is_custom_followup) or (is_fix_length and not length_warning):
+        answer_cache.set(
+            cache_key,
+            {
+                "answer": cleaned,
+                "explanation_word_count": expl_wc,
+                "total_word_count": total_wc,
+                "estimated_lines": est_lines,
+                "length_warning": length_warning,
+                "attempts": 1,
+            },
+        )
+
+    yield f"data: {_json.dumps({'type': 'done', 'question_id': question.id, 'text': cleaned, 'word_count': total_wc, 'explanation_word_count': expl_wc, 'estimated_lines': est_lines, 'min_words': word_range.min_words, 'max_words': word_range.max_words, 'target_words': word_range.target_words, 'length_warning': length_warning, 'cached': False})}\n\n"

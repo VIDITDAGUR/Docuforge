@@ -192,7 +192,7 @@ export const TOOLS: ToolDefinition[] = [
     category: 'document',
     groupLabel: 'Academic Tools',
     description:
-      'Upload an assignment sheet (PDF, DOCX, or photo), review extracted questions & marks, generate course-tuned notebook answers, and export PDF/DOCX.',
+      'Chat-style streaming interface: upload an assignment (PDF, DOCX, or photo), review extracted questions, and watch answers stream in real time. Length is calibrated to marks (30-40 words/mark).',
     acceptedExtensions: ['.pdf', '.docx', '.png', '.jpg', '.jpeg'],
     acceptedMimeTypes: [
       'application/pdf',
@@ -204,7 +204,7 @@ export const TOOLS: ToolDefinition[] = [
     maxSizeMB: 20,
     processingMode: 'server',
     limitationNote:
-      'Uses Google Gemini API via the backend (requires GEMINI_API_KEY in .env). Length targets follow marks rules (30-40 words/mark default) with editable review before generation.',
+      'Uses Google Gemini API (GEMINI_API_KEY in .env). Answers stream live via SSE. Length targets follow marks rules (30-40 words/mark, configurable). Export PDF/DOCX available via the Export menu.',
     theme: { bg: '#F4F4F6', hoverBg: '#EAEAEF', border: '#D1D1DC', tagBg: '#EAEAEF' },
   },
   {
