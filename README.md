@@ -1,8 +1,8 @@
 # DOCUFORGE
 
-DOCUFORGE is a free, open-source document utility workspace designed for college students and academic workflows. It provides **13 functional tools** for converting, viewing, editing, compressing, and resizing PDF, Word (`.docx`), PowerPoint (`.pptx`), and image files with a minimal sharp-edge interface.
+DOCUFORGE is a free, open-source document utility workspace designed for college students and academic workflows. It provides **14 functional tools** for converting, viewing, editing, compressing, resizing, and generating notebook-ready answers for PDF, Word (`.docx`), PowerPoint (`.pptx`), and image files with a minimal sharp-edge interface.
 
-## Implemented Tools (13)
+## Implemented Tools (14)
 
 ### Document Conversion
 1. **PDF to Word** — Extracts text blocks, headings, styling, tables, lists, and images into `.docx` (FastAPI + PyMuPDF).
@@ -24,6 +24,48 @@ DOCUFORGE is a free, open-source document utility workspace designed for college
 11. **PDF Compressor** — Shrink PDF size with percentage (`10%–85%`) compression control.
 12. **Word Compressor** — Optimize embedded `.docx` media and ZIP deflate level with percentage (`10%–85%`) control.
 13. **Image Compressor** — Compress JPG, PNG, and WebP images locally in the browser with `%` control and ZIP export.
+14. **Assignment Answer Generator** — Upload an assignment sheet (PDF, `.docx`, `.png`, `.jpg`), review and confirm extracted questions & marks, generate course-tailored answers via Google Gemini sized by marks (`30–40 words/mark` default), and export notebook-ready PDF or `.docx` with page headers.
+
+## Marks-Based Assignment Answer Generator Setup & Customization
+
+### 1. Configure `GEMINI_API_KEY`
+1. Get an API key from [Google AI Studio](https://aistudio.google.com/).
+2. Copy `.env.example` to `.env` (already in `.gitignore`):
+   ```bash
+   cp .env.example .env
+   ```
+3. Add your key and optional model override in `.env`:
+   ```dotenv
+   GEMINI_API_KEY=your_actual_key_here
+   DOCUFORGE_GEMINI_MODEL=gemini-3.8-flash
+   ```
+   Supported models configurable via `DOCUFORGE_GEMINI_MODEL` or the UI include `gemini-3.8-flash` (default) and `gemini-3.5-flash-lite`.
+
+### 2. Adding a New Course Preset
+All course sections (`B.Tech`, `Commerce`, `Management`, `Computer Applications`, `Design`, `Science`, `Arts and Humanities`, `Law`, `Other`) live in `backend/app/assignment/presets_config.json`. Add a new object under `"presets"`:
+```json
+{
+  "id": "science-biochem",
+  "course_name": "B.Sc Biochemistry",
+  "section": "Science",
+  "tone_style_notes": "Precise biochemical pathways, enzyme kinetics, and balanced reactions.",
+  "answer_format_rules": "Include pathway diagrams described in words, key enzymes, and clinical relevance.",
+  "words_per_mark_min": 30,
+  "words_per_mark_max": 40
+}
+```
+Restart the backend (or run tests) to load the new preset into the UI dropdown automatically.
+
+### 3. Changing the Word-per-Mark Rule
+- **Global / per-preset defaults:** Change `default_words_per_mark_min` / `default_words_per_mark_max` (or `words_per_mark_min` / `words_per_mark_max` on any preset) in `backend/app/assignment/presets_config.json`, or override them directly in the UI's Length & Model Settings.
+- **Exact mark overrides:** Populate `"explicit_overrides"` (at the root of `presets_config.json` or inside a specific preset) so specific mark values bypass the `marks * min..max` formula:
+  ```json
+  "explicit_overrides": {
+    "7": [210, 250],
+    "11": [350, 420]
+  }
+  ```
+- **Numerical / derivation / code questions:** Word-count limits apply strictly to the explanation prose; calculation lines and code blocks are excluded from word validation while remaining intact in the exported notebook sheet.
 
 ## High-Fidelity PPTX Viewer Architecture
 
