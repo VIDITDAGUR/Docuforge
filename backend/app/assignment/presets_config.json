@@ -1,0 +1,406 @@
+{
+  "default_words_per_mark_min": 30,
+  "default_words_per_mark_max": 40,
+  "explicit_overrides": {},
+  "sections": [
+    "B.Tech",
+    "Commerce",
+    "Management",
+    "Computer Applications",
+    "Design",
+    "Science",
+    "Arts and Humanities",
+    "Law",
+    "Other"
+  ],
+  "presets": [
+    {
+      "id": "btech-cse",
+      "course_name": "B.Tech CSE",
+      "section": "B.Tech",
+      "tone_style_notes": "Technical, precise terminology, concise algorithm steps or short code snippets where relevant.",
+      "answer_format_rules": "Use crisp computer science definitions, short algorithm/pseudocode steps or short code only when asked, and clear structured bullet points.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-cse-aiml",
+      "course_name": "B.Tech CSE (AI/ML)",
+      "section": "B.Tech",
+      "tone_style_notes": "Clear ML/AI intuition paired with formal definitions, model formulation, and loss/evaluation steps.",
+      "answer_format_rules": "State intuition, mathematical formulation or algorithm steps clearly, include a concrete ML example, and avoid unnecessary filler.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-cse-ds",
+      "course_name": "B.Tech CSE (Data Science)",
+      "section": "B.Tech",
+      "tone_style_notes": "Analytical and precise, covering statistical concepts, data pipeline stages, and clear trade-offs.",
+      "answer_format_rules": "Highlight statistical/modeling definitions, assumptions, stepwise pipeline methods, and practical dataset interpretation.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-cse-cyber",
+      "course_name": "B.Tech CSE (Cyber Security)",
+      "section": "B.Tech",
+      "tone_style_notes": "Security-first, precise protocol terms, threat vectors, cryptographic flow, and mitigations.",
+      "answer_format_rules": "Structure answers cleanly around security mechanism, attack/threat scenario, workflow or cryptographic steps, and countermeasures.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-it",
+      "course_name": "B.Tech IT",
+      "section": "B.Tech",
+      "tone_style_notes": "Technical, practical IT system terminology, architecture flow, and short implementation steps.",
+      "answer_format_rules": "Define protocols or architectures concisely, explain components in numbered steps, and give real-world enterprise or web examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-ece",
+      "course_name": "B.Tech ECE",
+      "section": "B.Tech",
+      "tone_style_notes": "Exact electronics and communication terms, governing equations, block/circuit descriptions, and units.",
+      "answer_format_rules": "Include circuit/block diagram descriptions with pin or stage labels when relevant, standard formulas, and neat stepwise derivations.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-eee",
+      "course_name": "B.Tech EEE",
+      "section": "B.Tech",
+      "tone_style_notes": "Precise electrical and electronic principles, phasor/machine equations, and circuit-level explanations.",
+      "answer_format_rules": "Show working principle, labelled circuit or phasor diagram instructions, governing equations with SI units, and practical applications.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-electrical",
+      "course_name": "B.Tech Electrical",
+      "section": "B.Tech",
+      "tone_style_notes": "Standard power, machines, and control system terminology, formulas with units, and clear operating steps.",
+      "answer_format_rules": "Present principle, labeled circuit/equivalent diagram description, key equations, and stepwise numerical calculations with SI units.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-mechanical",
+      "course_name": "B.Tech Mechanical",
+      "section": "B.Tech",
+      "tone_style_notes": "Formulas, standard thermodynamic/mechanics terms, working principles, and labelled-diagram descriptions.",
+      "answer_format_rules": "Include governing formulas with units, clear description of what to draw and label in notebook diagrams, assumptions, and industrial uses.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-civil",
+      "course_name": "B.Tech Civil",
+      "section": "B.Tech",
+      "tone_style_notes": "Formulas, IS/standard structural or geotechnical terms, construction workflow, and labelled-diagram descriptions.",
+      "answer_format_rules": "Use standard civil engineering nomenclature, design/load formulas with units, diagram sketches described with clear labels, and field examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-chemical",
+      "course_name": "B.Tech Chemical",
+      "section": "B.Tech",
+      "tone_style_notes": "Process principles, mass/energy balance formulas, reaction conditions, and labelled flowsheet descriptions.",
+      "answer_format_rules": "Specify chemical equations/conditions, transport or balance expressions with units, equipment diagram labels, and industrial applications.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-biotechnology",
+      "course_name": "B.Tech Biotechnology",
+      "section": "B.Tech",
+      "tone_style_notes": "Accurate molecular/bioprocess terms, pathway steps, labelled diagram descriptions, and experimental relevance.",
+      "answer_format_rules": "Explain biological mechanisms chronologically, include clear labelled diagram guidance, reaction/pathway names, and real bioprocess examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-aerospace",
+      "course_name": "B.Tech Aerospace",
+      "section": "B.Tech",
+      "tone_style_notes": "Rigorous aerodynamic, propulsion, and flight-mechanics terms, non-dimensional numbers, and diagram labels.",
+      "answer_format_rules": "State assumptions clearly, give vector/fluid formulas with units, describe airfoil or free-body diagram labels, and solve numerically step by step.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-automobile",
+      "course_name": "B.Tech Automobile",
+      "section": "B.Tech",
+      "tone_style_notes": "Automotive subsystem terminology, performance formulas, operating cycles, and labelled assembly descriptions.",
+      "answer_format_rules": "Describe working stages, include labelled schematic descriptions (engine, drivetrain, chassis), key equations, and vehicle examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-mining",
+      "course_name": "B.Tech Mining",
+      "section": "B.Tech",
+      "tone_style_notes": "Accurate extraction, ventilation, and rock-mechanics terminology, safety rules, formulas, and layout labels.",
+      "answer_format_rules": "Cover operating method, mine layout/strata diagram description with labels, safety considerations, and standard engineering calculations.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-metallurgical",
+      "course_name": "B.Tech Metallurgical",
+      "section": "B.Tech",
+      "tone_style_notes": "Precise phase transformation, extraction, and materials characterization terms with phase/process labels.",
+      "answer_format_rules": "Include chemical/metallurgical reactions, phase diagram or microstructure sketch labels, structure-property links, and alloy examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-production",
+      "course_name": "B.Tech Production/Industrial",
+      "section": "B.Tech",
+      "tone_style_notes": "Manufacturing processes, operations research formulations, quality tools, and labelled tooling diagrams.",
+      "answer_format_rules": "Combine machining/OR definitions with stepwise equations or control charts, tool geometry diagram descriptions, and plant examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-instrumentation",
+      "course_name": "B.Tech Instrumentation",
+      "section": "B.Tech",
+      "tone_style_notes": "Transducer principles, signal conditioning, control transfer equations, and labelled block diagrams.",
+      "answer_format_rules": "Explain transduction principle, static/dynamic characteristics, labelled bridge or block diagram instructions, and sensitivity formulas.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-agriculture",
+      "course_name": "B.Tech Agriculture Engineering",
+      "section": "B.Tech",
+      "tone_style_notes": "Soil-water, farm machinery, and post-harvest engineering terms, field formulas, and labelled schematics.",
+      "answer_format_rules": "Provide practical engineering definitions, irrigation or machinery equations with units, labelled diagram cues, and field applications.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-food-tech",
+      "course_name": "B.Tech Food Technology",
+      "section": "B.Tech",
+      "tone_style_notes": "Food chemistry, preservation kinetics, unit operations, and labelled processing flow descriptions.",
+      "answer_format_rules": "Structure around process principle, key parameters (temperature/pH/time), flow diagram descriptions, and food industry examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "btech-textile",
+      "course_name": "B.Tech Textile",
+      "section": "B.Tech",
+      "tone_style_notes": "Fiber science, yarn/fabric mechanics, dyeing/finishing processes, and machine zone diagram labels.",
+      "answer_format_rules": "Use standard textile counts/units, machine passage or weave diagram labels, stepwise mechanisms, and fabric property links.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "commerce-bcom",
+      "course_name": "B.Com",
+      "section": "Commerce",
+      "tone_style_notes": "Clear commercial definitions, accounting/finance formulas, and standard ledger/journal format descriptions.",
+      "answer_format_rules": "Begin with crisp statutory or accounting definitions, state formulas clearly, describe journal/ledger/balance-sheet formats neatly in plain text, and solve cleanly.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "commerce-bcom-hons",
+      "course_name": "B.Com (Hons)",
+      "section": "Commerce",
+      "tone_style_notes": "Detailed analytical commerce tone with accounting standards, tax rules, formulas, and structured journal/ledger treatments.",
+      "answer_format_rules": "Cite standard principles/sections concisely, lay out accounting treatments or ratio formulas cleanly, and illustrate with numerical/business examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "commerce-mcom",
+      "course_name": "M.Com",
+      "section": "Commerce",
+      "tone_style_notes": "Postgraduate analytical depth across corporate finance, taxation, auditing, and economic policy frameworks.",
+      "answer_format_rules": "Present theoretical grounding, analytical models/formulas, structured accounting or regulatory treatments, and critical evaluation.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "mgmt-bba",
+      "course_name": "BBA",
+      "section": "Management",
+      "tone_style_notes": "Structured management concepts, simple frameworks, and relatable corporate or startup examples.",
+      "answer_format_rules": "Use short headings or numbered points, explain management frameworks step by step, and include brief real-world business examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "mgmt-mba",
+      "course_name": "MBA",
+      "section": "Management",
+      "tone_style_notes": "Executive yet student-friendly clarity using strategic frameworks (SWOT, Porter, 4Ps), KPIs, and business case reasoning.",
+      "answer_format_rules": "Open with core concept, apply relevant management frameworks in structured points, illustrate with concrete industry cases, and end with strategic takeaway.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "mgmt-pgdm",
+      "course_name": "PGDM",
+      "section": "Management",
+      "tone_style_notes": "Industry-applied management reasoning, decision frameworks, quantitative metrics, and actionable examples.",
+      "answer_format_rules": "Frame answers around business objective, analytical framework steps, practical company illustrations, and concise managerial recommendations.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "ca-bca",
+      "course_name": "BCA",
+      "section": "Computer Applications",
+      "tone_style_notes": "Clear computing concepts paired with readable syntax/code snippets and practical execution flow.",
+      "answer_format_rules": "Explain core computing concepts in plain student English, provide clean code/SQL examples only when relevant, and list advantages/applications.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "ca-mca",
+      "course_name": "MCA",
+      "section": "Computer Applications",
+      "tone_style_notes": "Advanced software engineering, DBMS, OS, and algorithmic precision with clean code or system-flow descriptions.",
+      "answer_format_rules": "Include accurate technical definitions, time/space complexity or architectural flow where applicable, concise code blocks if asked, and real examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "design-bdes",
+      "course_name": "B.Des",
+      "section": "Design",
+      "tone_style_notes": "Design thinking focus covering concept, process stages, visual/usability principles, and user-centered examples.",
+      "answer_format_rules": "Structure answers cleanly as Concept, Design Process, Core Principles, and Real-World Product/UI Examples; describe sketch ideas clearly in words.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "design-mdes",
+      "course_name": "M.Des",
+      "section": "Design",
+      "tone_style_notes": "Research-backed design synthesis linking human factors, methodology, systems thinking, and studio/industry critique.",
+      "answer_format_rules": "Highlight theoretical rationale, iterative research/prototyping workflow, design principles, and critical case examples suitable for notebook writing.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "science-bsc",
+      "course_name": "B.Sc",
+      "section": "Science",
+      "tone_style_notes": "Accurate scientific laws, balanced equations, apparatus/diagram descriptions, and stepwise derivations.",
+      "answer_format_rules": "Define terms rigorously, state physical/chemical laws or theorems precisely, describe notebook diagrams with labels, and highlight real examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "science-msc",
+      "course_name": "M.Sc",
+      "section": "Science",
+      "tone_style_notes": "Postgraduate scientific rigor with mechanistic explanations, mathematical proofs, instrumentation notes, and exceptions.",
+      "answer_format_rules": "Explain underlying mechanisms or proofs step by step, include governing equations and units, and provide experimental or analytical illustrations.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "arts-ba",
+      "course_name": "BA",
+      "section": "Arts and Humanities",
+      "tone_style_notes": "Clear, readable academic prose balancing historical/social/literary context, key arguments, and textual examples.",
+      "answer_format_rules": "Present a focused thesis introduction, well-ordered thematic paragraphs or points, named thinkers/events as evidence, and a brief conclusion.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "arts-ma",
+      "course_name": "MA",
+      "section": "Arts and Humanities",
+      "tone_style_notes": "Analytical humanities scholarship citing critical perspectives, theoretical schools, and nuanced textual/historical critique.",
+      "answer_format_rules": "Structure arguments cleanly around theoretical lens, comparative viewpoints of scholars, concrete evidence, and balanced synthesis.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "law-ba-llb",
+      "course_name": "BA LLB",
+      "section": "Law",
+      "tone_style_notes": "Structured legal reasoning citing statutes/articles, essential legal ingredients, landmark cases, and IRAC flow.",
+      "answer_format_rules": "State legal rule/statutory provision cleanly, break down essential elements, reference landmark case principles accurately, and conclude directly.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "law-bba-llb",
+      "course_name": "BBA LLB",
+      "section": "Law",
+      "tone_style_notes": "Corporate and statutory legal clarity pairing legal provisions, case principles, and commercial governance implications.",
+      "answer_format_rules": "Outline statutory sections/doctrines, explain corporate or contractual applicability step by step, cite landmark precedents, and summarize conclusion.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "law-llb",
+      "course_name": "LLB",
+      "section": "Law",
+      "tone_style_notes": "Formal legal precision covering statutory provisions, judicial tests, exceptions, and landmark case rulings.",
+      "answer_format_rules": "Follow Issue, Statutory Provision/Principle, Judicial Application/Case Law, and Conclusion cleanly for easy handwritten exam/notebook study.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "other-bpharm",
+      "course_name": "Pharmacy (B.Pharm)",
+      "section": "Other",
+      "tone_style_notes": "Pharmacological, pharmaceutical chemistry, and formulation clarity covering mechanisms, structures, doses, and uses.",
+      "answer_format_rules": "Include mechanism of action or synthesis/formulation steps, therapeutic uses, adverse effects or assay controls, and neat pathway descriptions.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "other-barch",
+      "course_name": "Architecture (B.Arch)",
+      "section": "Other",
+      "tone_style_notes": "Spatial, structural, climate-responsive, and material vocabulary paired with clear plan/section sketch descriptions.",
+      "answer_format_rules": "Discuss architectural concept, site/climate or structural behavior, labelled plan/elevation sketch cues, and built precedents.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "other-bhm",
+      "course_name": "Hotel Management (BHM)",
+      "section": "Other",
+      "tone_style_notes": "Hospitality operations clarity covering SOP steps, hygiene/safety standards, service formats, and guest-experience examples.",
+      "answer_format_rules": "Present clear SOP workflows in numbered points, standard hospitality terminology, practical operational checklists, and service examples.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "other-mass-comm",
+      "course_name": "Mass Communication",
+      "section": "Other",
+      "tone_style_notes": "Media theory and journalism clarity linking communication models, ethics, audience impact, and real campaign examples.",
+      "answer_format_rules": "Explain media concepts concisely, structure arguments around models/theories and ethics, and include current media/campaign illustrations.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40
+    },
+    {
+      "id": "custom",
+      "course_name": "Custom",
+      "section": "Other",
+      "tone_style_notes": "Adaptable clear academic student style tailored by your subject hint and custom words-per-mark settings.",
+      "answer_format_rules": "Keep explanations clear, accurate, well-structured in short paragraphs or numbered points, and easy to copy into a handwritten notebook.",
+      "words_per_mark_min": 30,
+      "words_per_mark_max": 40,
+      "is_custom": true
+    }
+  ]
+}
