@@ -31,7 +31,7 @@ ASSIGNMENT_CACHE_DIR = Path(
     )
 )
 
-GEMINI_MODEL = os.getenv("DOCUFORGE_GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.getenv("DOCUFORGE_GEMINI_MODEL", "gemini-3.5-flash")
 
 
 def get_gemini_api_key() -> str | None:

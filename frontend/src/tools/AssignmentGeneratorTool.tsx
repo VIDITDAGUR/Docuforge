@@ -182,7 +182,7 @@ const AssignmentGeneratorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) =
   const [subjectHint, setSubjectHint] = useState<string>('');
   const [wordsPerMarkMin, setWordsPerMarkMin] = useState<number>(30);
   const [wordsPerMarkMax, setWordsPerMarkMax] = useState<number>(40);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash');
   const [concurrency, setConcurrency] = useState<number>(2);
   const [useCache, setUseCache] = useState<boolean>(true);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState<boolean>(false);
@@ -784,8 +784,9 @@ const AssignmentGeneratorTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) =
                       className="w-full border border-[#CCCCCC] bg-white px-2 py-1.5 text-xs"
                     >
                       {(catalog?.available_models || [
-                        { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+                        { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
                         { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
+                        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
                       ]).map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.label}

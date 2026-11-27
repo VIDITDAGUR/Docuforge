@@ -22,8 +22,11 @@ from .question_parser import parse_assignment_questions
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 AVAILABLE_MODELS = [
-    {"id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash (Default)"},
+    {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash (Recommended)"},
     {"id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite (Fast / High-Quota)"},
+    {"id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash"},
+    {"id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash"},
+    {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
 ]
 
 

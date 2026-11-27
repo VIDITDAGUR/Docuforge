@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..config import GEMINI_MODEL, get_gemini_api_key
 from .file_ingest import ExtractedAssignmentInput
+from .generator import call_with_exponential_backoff
 from .models import AssignmentQuestion, QuestionType, TokenUsage
 
 logger = logging.getLogger("docuforge.assignment.parser")
@@ -317,14 +318,17 @@ def parse_assignment_questions(
         contents.append(types.Part.from_bytes(data=img_bytes, mime_type=mime_type))
 
     try:
-        response = client.models.generate_content(
-            model=target_model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=RawParsedAssignment,
-                temperature=0.1,
+        response = call_with_exponential_backoff(
+            lambda: client.models.generate_content(
+                model=target_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=RawParsedAssignment,
+                    temperature=0.1,
+                ),
             ),
+            max_tries=4,
         )
     except genai_errors.APIError as exc:
         raise RuntimeError(f"Gemini parsing failed (HTTP {exc.code}): {exc}") from exc
