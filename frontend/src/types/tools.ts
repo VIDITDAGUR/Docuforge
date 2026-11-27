@@ -18,6 +18,7 @@ export interface ToolDefinition {
     | 'Document Conversion'
     | 'Document Viewers'
     | 'Document Editors'
+    | 'Academic Tools'
     | 'PDF Utilities'
     | 'Document Utilities'
     | 'Image Utilities';

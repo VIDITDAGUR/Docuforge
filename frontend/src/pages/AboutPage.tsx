@@ -57,7 +57,7 @@ export const AboutPage: React.FC = () => {
 
         <div className="pt-2">
           <Link to="/tools" className="df-btn-dark px-4 py-2 text-xs font-medium inline-block">
-            Browse All 13 Tools
+            Browse All 14 Tools
           </Link>
         </div>
       </div>

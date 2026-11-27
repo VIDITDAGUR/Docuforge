@@ -186,6 +186,28 @@ export const TOOLS: ToolDefinition[] = [
     theme: { bg: '#EEF3F7', hoverBg: '#E1EAF1', border: '#C6D6E3', tagBg: '#E1EAF1' },
   },
   {
+    id: 'assignment-generator',
+    slug: 'assignment-generator',
+    name: 'Assignment Answer Generator',
+    category: 'document',
+    groupLabel: 'Academic Tools',
+    description:
+      'Upload an assignment sheet (PDF, DOCX, or photo), review extracted questions & marks, generate course-tuned notebook answers, and export PDF/DOCX.',
+    acceptedExtensions: ['.pdf', '.docx', '.png', '.jpg', '.jpeg'],
+    acceptedMimeTypes: [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/png',
+      'image/jpeg',
+    ],
+    formatsLabel: 'PDF, DOCX, PNG, JPG, JPEG',
+    maxSizeMB: 20,
+    processingMode: 'server',
+    limitationNote:
+      'Uses Google Gemini API via the backend (requires GEMINI_API_KEY in .env). Length targets follow marks rules (30-40 words/mark default) with editable review before generation.',
+    theme: { bg: '#F4F4F6', hoverBg: '#EAEAEF', border: '#D1D1DC', tagBg: '#EAEAEF' },
+  },
+  {
     id: 'image-compressor',
     slug: 'image-compressor',
     name: 'Image Compressor',

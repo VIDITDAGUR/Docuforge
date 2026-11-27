@@ -101,6 +101,9 @@ export const HomePage: React.FC = () => {
                 <Link to="/tools/pptx-viewer" className="df-btn-light px-2.5 py-1">
                   PPTX Viewer
                 </Link>
+                <Link to="/tools/assignment-generator" className="df-btn-light px-2.5 py-1">
+                  Assignment Answers
+                </Link>
               </div>
             </div>
 

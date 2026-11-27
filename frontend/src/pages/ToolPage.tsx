@@ -17,6 +17,7 @@ const PdfEditorTool = lazy(() => import('../tools/PdfEditorTool'));
 const PdfCompressorTool = lazy(() => import('../tools/PdfCompressorTool'));
 const WordCompressorTool = lazy(() => import('../tools/WordCompressorTool'));
 const ImageCompressorTool = lazy(() => import('../tools/ImageCompressorTool'));
+const AssignmentGeneratorTool = lazy(() => import('../tools/AssignmentGeneratorTool'));
 
 export const ToolPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -66,6 +67,8 @@ export const ToolPage: React.FC = () => {
         return <WordCompressorTool tool={tool} />;
       case 'image-compressor':
         return <ImageCompressorTool tool={tool} />;
+      case 'assignment-generator':
+        return <AssignmentGeneratorTool tool={tool} />;
       default:
         return null;
     }
