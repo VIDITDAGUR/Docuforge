@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm run copy-worker && vite",
+    "build": "npm run copy-worker && tsc -b && vite build",
+    "copy-worker": "node -e \"const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.copyFileSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','public/pdf.worker.min.js')\"",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,9 +16,6 @@
     "mammoth": "^1.8.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.8.69",
-    "pptx-preview": "^1.0.7",
-    "pptxgenjs": "^3.12.0",
-    "pptxtojson": "^3.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"

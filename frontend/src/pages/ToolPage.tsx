@@ -11,7 +11,6 @@ const PdfToImageTool = lazy(() => import('../tools/PdfToImageTool'));
 const PdfToWordTool = lazy(() => import('../tools/PdfToWordTool'));
 const WordToPdfTool = lazy(() => import('../tools/WordToPdfTool'));
 const PdfToPowerPointTool = lazy(() => import('../tools/PdfToPowerPointTool'));
-const PowerPointToPdfTool = lazy(() => import('../tools/PowerPointToPdfTool'));
 const PdfResizerTool = lazy(() => import('../tools/PdfResizerTool'));
 const WordEditorTool = lazy(() => import('../tools/WordEditorTool'));
 const PdfEditorTool = lazy(() => import('../tools/PdfEditorTool'));
@@ -55,8 +54,6 @@ export const ToolPage: React.FC = () => {
         return <WordToPdfTool tool={tool} />;
       case 'pdf-to-powerpoint':
         return <PdfToPowerPointTool tool={tool} />;
-      case 'powerpoint-to-pdf':
-        return <PowerPointToPdfTool tool={tool} />;
       case 'pdf-resizer':
         return <PdfResizerTool tool={tool} />;
       case 'word-editor':

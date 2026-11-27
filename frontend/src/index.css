@@ -153,13 +153,3 @@
   color: #555555;
   margin: 0.5rem 0;
 }
-
-/* Keep pptx-preview controlled by DOCUFORGE toolbar */
-.pptx-preview-wrapper-next,
-.pptx-preview-wrapper-pagination {
-  display: none !important;
-}
-
-.pptx-preview-wrapper {
-  background: #ffffff !important;
-}

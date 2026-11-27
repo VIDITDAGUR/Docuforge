@@ -1,11 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 let workerConfigured = false;
 
 export function getPdfJs() {
   if (!workerConfigured) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
     workerConfigured = true;
   }
   return pdfjsLib;

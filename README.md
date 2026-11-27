@@ -1,62 +1,57 @@
 # DOCUFORGE
 
-DOCUFORGE is a free, open-source document utility workspace designed for college students and academic workflows. It provides 12 functional tools for converting, viewing, editing, and resizing PDF, Word (`.docx`), PowerPoint (`.pptx`), and image files with a minimal monochrome interface.
+DOCUFORGE is a free, open-source document utility workspace designed for college students and academic workflows. It provides **13 functional tools** for converting, viewing, editing, compressing, and resizing PDF, Word (`.docx`), PowerPoint (`.pptx`), and image files with a minimal sharp-edge interface.
 
-## Features (12 Tools)
+## Implemented Tools (13)
 
 ### Document Conversion
-1. **PDF to Word** — Extracts text, headings, styling, and embedded images from PDFs into editable `.docx` files.
-2. **Word to PDF** — Converts `.docx` paragraphs, headings, lists, and tables into vector `.pdf` files.
-3. **PDF to PowerPoint** — Converts PDF pages into `.pptx` slides preserving page dimensions and visual appearance, with extracted text attached as slide notes.
-4. **PowerPoint to PDF** — Converts `.pptx` slides into multi-page `.pdf` documents preserving slide dimensions, shapes, images, and text.
-5. **Image to PDF** — Combines multiple JPG, JPEG, PNG, and WebP images with custom ordering and page sizing locally in the browser.
-6. **PDF to Image** — Renders PDF pages into PNG or JPG images locally with individual downloads or bulk ZIP export.
+1. **PDF to Word** — Extracts text blocks, headings, styling, tables, lists, and images into `.docx` (FastAPI + PyMuPDF).
+2. **Word to PDF** — Converts `.docx` files into PDF via LibreOffice headless (when installed) or ReportLab fallback.
+3. **PDF to PowerPoint** — Converts PDF pages into `.pptx` slides preserving page dimensions and appearance, with extracted text in speaker notes.
+4. **Image to PDF** — Combines ordered JPG, JPEG, PNG, and WebP images locally in the browser.
+5. **PDF to Image** — Renders PDF pages into PNG or JPG images locally with per-page or ZIP downloads.
 
 ### Document Viewers
-7. **PDF Viewer** — Page navigation, zoom controls, fit-to-page, and original download (local in browser).
-8. **PPTX Viewer** — Parses and renders `.pptx` slides with slide navigation and fullscreen presentation mode (local in browser).
+6. **PDF Viewer** — Page navigation, zoom, fit-to-page, and original download (local in browser via PDF.js).
+7. **PPTX Viewer (High Fidelity)** — Uploads `.pptx` (up to 50 MB) to FastAPI, converts via **LibreOffice headless** (`soffice`) + **Poppler** (`pdftoppm -png -r 150`), caches per-slide PNGs by SHA-256 hash, and presents slides in a responsive 16:9 / aspect-preserving slideshow viewer with lazy-loaded thumbnails, keyboard arrows, mobile touch swipe, and fullscreen mode.
 
 ### Document Editors
-9. **Word Editor** — Rich-text document editor supporting headings, bold/italic/underline, alignment, bullet/numbered lists, `.docx` import, and `.docx` / `.pdf` export.
-10. **PDF Editor** — Add text, highlights, annotation notes, freehand drawings, and rectangles/circles directly onto PDF pages and download the edited PDF.
-11. **PPTX Editor** — Create or open `.pptx` decks, add/delete slides, insert text boxes and shapes, change slide backgrounds, and export to `.pptx`.
+8. **Word Editor** — Rich-text editor supporting headings, bold/italic/underline, color, alignment, lists, tables, `.docx` OpenXML import, and `.docx`/`.pdf` export.
+9. **PDF Editor** — Add text, highlights, notes, freehand drawings, and shapes directly onto PDF pages and export.
 
-### PDF Utilities
-12. **PDF Resizer** — Resize PDF pages to A4, A3, A5, US Letter, or custom dimensions (`mm`, `in`, `pt`) while preserving content proportions.
+### PDF, Document & Image Utilities
+10. **PDF Resizer** — Resize PDF pages to A4, A3, A5, US Letter, or custom dimensions (`mm`, `in`, `pt`).
+11. **PDF Compressor** — Shrink PDF size with percentage (`10%–85%`) compression control.
+12. **Word Compressor** — Optimize embedded `.docx` media and ZIP deflate level with percentage (`10%–85%`) control.
+13. **Image Compressor** — Compress JPG, PNG, and WebP images locally in the browser with `%` control and ZIP export.
 
-## Privacy & Security
+## High-Fidelity PPTX Viewer Architecture
 
-- **Local Processing:** PDF Viewer, PPTX Viewer, Image to PDF, PDF to Image, PDF Resizer, PDF Editor, PPTX Editor, and Word Editor (DOCX export) execute completely in your browser. Files never leave your device.
-- **Stateless Backend Processing:** Server-side conversions validate file extensions, magic-byte signatures, archive structure, and upload size limits (`DOCUFORGE_MAX_UPLOAD_MB`). Files are processed in isolated temporary directories and deleted immediately once the response completes.
-- **No Accounts or Tracking:** DOCUFORGE does not store documents or collect personal information.
+DOCUFORGE deliberately **does not parse PPTX in the browser** for slide viewing:
 
-## Tech Stack & Dependencies
+1. **Upload & Validation (`POST /api/upload`):** Accepts `.pptx` only (extension check, MIME check, 50 MB size limit, `PK` ZIP + `ppt/presentation.xml` validation), sanitizes filenames, and computes the **SHA-256** digest while streaming.
+2. **SHA-256 Cache Hit:** If `DOCUFORGE_PPTX_CACHE_DIR/<sha256>/` already holds rendered PNGs, returns `status: "done"` and slide URLs immediately.
+3. **Background Job (`GET /api/jobs/{job_id}`):** On cache miss, spawns a background conversion job (`pending` → `processing` → `done` / `failed`):
+   - Inspects `.pptx` XML for declared `typeface` names and logs warnings for fonts missing on the host.
+   - Runs `soffice --headless --convert-to pdf` with a unique `-env:UserInstallation=file:///tmp/lo_<uuid>` profile and 120 s timeout.
+   - Runs `pdftoppm -png -r 150` to produce `slide-001.png`, `slide-002.png`, etc., and cleans up temp workspaces and LibreOffice profiles.
+4. **Immutable Slide Serving (`GET /api/slides/{hash}/{n}.png`):** Serves cached slide PNGs with `Cache-Control: public, max-age=31536000, immutable`.
 
-### Frontend (`/frontend`)
-- **React 18 + TypeScript + Vite + Tailwind CSS v4**
-- `pdfjs-dist` — Client-side PDF rendering
-- `pdf-lib` — Client-side PDF generation, page resizing, and annotation baking
-- `jszip` — ZIP archive generation and `.pptx` OpenXML extraction
-- `mammoth` — `.docx` import into HTML for the Word Editor
-- `docx` — Client-side `.docx` generation
-- `pptxgenjs` — Client-side `.pptx` generation
-- `lucide-react` — Minimal monochrome icons
+### PPTX Viewer Fidelity & Limitations
+- **Not preserved in static PNG rendering:** Slide animations, slide transitions, and embedded audio/video playback are not preserved.
+- **Font fidelity:** Install metric-compatible fonts (`Carlito` for Calibri, `Caladea` for Cambria, `Liberation` for Arial/Times New Roman, and `Noto`) so text lines do not wrap differently or overflow boxes. Any missing fonts are logged on the backend and surfaced in the viewer notice.
+- **Complex Office constructs:** Certain proprietary Microsoft SmartArt layouts, 3D effects/shadows, or custom chart themes may render slightly differently under LibreOffice Impress compared to desktop PowerPoint.
 
-### Backend (`/backend`)
-- **Python FastAPI + Uvicorn**
-- `pymupdf` (`fitz`) — PDF text/image extraction and page rendering
-- `python-docx` — Reading and writing `.docx` files
-- `python-pptx` — Reading and writing `.pptx` files
-- `reportlab` — Vector PDF generation
-- `pillow` — Image handling
+## Setup & Installation
 
-## Local Development
+### 1. System Dependencies (Ubuntu / Debian)
+Run the included setup script to install LibreOffice headless, Poppler (`pdftoppm`), and metric-compatible fonts:
+```bash
+chmod +x scripts/setup_pptx_server.sh
+./scripts/setup_pptx_server.sh
+```
 
-### Prerequisites
-- Node.js 20+ and npm
-- Python 3.11+
-
-### 1. Backend Setup
+### 2. Backend Setup
 ```bash
 cd backend
 python3 -m venv .venv
@@ -65,31 +60,34 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### 2. Frontend Setup
+### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Open `http://localhost:5173`. Vite proxies `/api/*` to `http://127.0.0.1:8000`.
 
-Open `http://localhost:5173`. The Vite dev server proxies `/api/*` requests to `http://127.0.0.1:8000`.
-
-### 3. Running Tests & Production Build
+### 4. Docker (Backend with LibreOffice, Poppler & Fonts)
 ```bash
-# Backend tests
 cd backend
-.venv/bin/pytest
+docker build -t docuforge-backend .
+docker run -d -p 8000:8000 -e DOCUFORGE_CORS_ORIGINS="*" docuforge-backend
+```
+
+### 5. Running Tests & Production Build
+```bash
+# Backend tests (API + PPTX viewer validation, cache, and mocked conversion)
+cd backend
+.venv/bin/pytest -v
 
 # Frontend typecheck & production build
 cd frontend
 npm run build
 ```
 
-## Production Deployment
-
-1. Copy `.env.example` and configure `DOCUFORGE_MAX_UPLOAD_MB` and `DOCUFORGE_CORS_ORIGINS`.
-2. Build the frontend (`cd frontend && npm run build`) and serve `frontend/dist/` via Nginx, Caddy, or Cloudflare Pages.
-3. Run the backend with Uvicorn/Gunicorn (`uvicorn app.main:app --host 0.0.0.0 --port 8000`) and reverse-proxy `/api/` to it (or set `VITE_API_BASE_URL` at build time if hosted on a separate origin).
+> [!NOTE]
+> If deploying behind Nginx, set `client_max_body_size 55M;` in your `/etc/nginx/sites-available/docuforge` block so 50 MB `.pptx` uploads are accepted.
 
 ## License
 

@@ -20,7 +20,7 @@ export const App: React.FC = () => {
               element={
                 <CategoryToolsPage
                   title="All Tools"
-                  description="All 14 document converters, viewers, editors, compressors, and PDF utilities."
+                  description="All 13 document converters, viewers, editors, compressors, and PDF utilities."
                 />
               }
             />

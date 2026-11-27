@@ -1,119 +1,207 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
-import { init as initPptxPreview } from 'pptx-preview';
-import type PPTXPreviewer from 'pptx-preview/dist/previewer/index';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+} from 'lucide-react';
 import { ToolDefinition } from '../types/tools';
 import { FileDropzone } from '../components/common/FileDropzone';
 import { StatusBanner } from '../components/common/StatusBanner';
 import { useStagedToolFiles } from '../hooks/useStagedToolFiles';
 import { triggerBlobDownload } from '../utils/fileValidation';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+interface JobResponse {
+  job_id: string;
+  file_hash: string;
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  cached?: boolean;
+  slide_count: number;
+  slides: string[];
+  aspect_ratio: number;
+  missing_fonts?: string[];
+  error?: string | null;
+}
+
 const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [statusPhase, setStatusPhase] = useState<string | null>(null);
 
-  const [slideCount, setSlideCount] = useState(0);
-  const [activeSlide, setActiveSlide] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [slides, setSlides] = useState<string[]>([]);
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
+  const [missingFonts, setMissingFonts] = useState<string[]>([]);
+  const [wasCached, setWasCached] = useState<boolean>(false);
+  const [activeSlide, setActiveSlide] = useState<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const previewWrapRef = useRef<HTMLDivElement | null>(null);
-  const previewerRef = useRef<PPTXPreviewer | null>(null);
+  const touchStartX = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
 
   useStagedToolFiles(tool.acceptedExtensions, tool.maxSizeMB, false, (incoming) => {
     setFiles(incoming);
   });
 
+  const clearTimersAndRequests = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
+    return () => clearTimersAndRequests();
+  }, []);
+
+  useEffect(() => {
+    clearTimersAndRequests();
     if (files.length === 0) {
-      previewerRef.current?.destroy();
-      previewerRef.current = null;
-      setSlideCount(0);
+      setSlides([]);
+      setMissingFonts([]);
+      setWasCached(false);
       setActiveSlide(0);
+      setStatusPhase(null);
       return;
     }
 
-    (async () => {
-      setLoading(true);
-      setError(null);
+    let cancelled = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const pollJob = async (jobId: string) => {
+      if (cancelled) return;
       try {
-        const buffer = await files[0].arrayBuffer();
-        if (cancelled || !previewWrapRef.current) return;
-
-        previewerRef.current?.destroy();
-        previewWrapRef.current.innerHTML = '';
-
-        const containerW = Math.min(960, Math.max(320, previewWrapRef.current.clientWidth || 860));
-        const containerH = Math.round((containerW * 9) / 16);
-
-        const previewer = initPptxPreview(previewWrapRef.current, {
-          width: containerW,
-          height: containerH,
-          mode: 'slide',
+        const res = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
+          signal: controller.signal,
         });
+        if (!res.ok) {
+          throw new Error(`Unable to read conversion status (HTTP ${res.status}).`);
+        }
+        const job: JobResponse = await res.json();
+        if (cancelled) return;
 
-        await previewer.preview(buffer);
-        if (cancelled) {
-          previewer.destroy();
+        if (job.status === 'done') {
+          setSlides(job.slides.map((u) => `${API_BASE}${u}`));
+          setAspectRatio(job.aspect_ratio || 16 / 9);
+          setMissingFonts(job.missing_fonts || []);
+          setActiveSlide(0);
+          setStatusPhase(null);
           return;
         }
 
-        previewerRef.current = previewer;
-        const count = previewer.slideCount || 0;
-        if (count === 0) {
-          setError('No slides found in this PPTX file.');
-        } else {
-          setSlideCount(count);
-          setActiveSlide(0);
-          previewer.renderSingleSlide(0);
+        if (job.status === 'failed') {
+          setError(
+            job.error ||
+              'Presentation conversion failed. Ensure LibreOffice and Poppler are installed on the server.'
+          );
+          setStatusPhase(null);
+          return;
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to render PPTX presentation.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+
+        setStatusPhase(
+          job.status === 'processing'
+            ? 'Rendering slides via LibreOffice headless and pdftoppm (150 DPI)...'
+            : 'Queued for LibreOffice conversion...'
+        );
+        pollTimerRef.current = window.setTimeout(() => void pollJob(jobId), 800);
+      } catch (err: unknown) {
+        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
+        setError(err instanceof Error ? err.message : 'Failed while checking conversion progress.');
+        setStatusPhase(null);
       }
-    })();
+    };
+
+    const uploadDeck = async () => {
+      setError(null);
+      setSlides([]);
+      setMissingFonts([]);
+      setWasCached(false);
+      setStatusPhase('Uploading PPTX presentation to server...');
+
+      try {
+        const formData = new FormData();
+        formData.append('file', files[0]);
+
+        const res = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          let detail = `Upload failed with status ${res.status}.`;
+          try {
+            const payload = await res.json();
+            if (payload?.detail) detail = payload.detail;
+          } catch {
+            // ignore non-json error
+          }
+          throw new Error(detail);
+        }
+
+        const job: JobResponse = await res.json();
+        if (cancelled) return;
+
+        setWasCached(Boolean(job.cached));
+        if (job.status === 'done') {
+          setSlides(job.slides.map((u) => `${API_BASE}${u}`));
+          setAspectRatio(job.aspect_ratio || 16 / 9);
+          setMissingFonts(job.missing_fonts || []);
+          setActiveSlide(0);
+          setStatusPhase(null);
+        } else {
+          setStatusPhase('Queued for LibreOffice conversion...');
+          pollTimerRef.current = window.setTimeout(() => void pollJob(job.job_id), 600);
+        }
+      } catch (err: unknown) {
+        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to upload presentation. Verify the DOCUFORGE backend server is running.'
+        );
+        setStatusPhase(null);
+      }
+    };
+
+    void uploadDeck();
 
     return () => {
       cancelled = true;
+      clearTimersAndRequests();
     };
   }, [files]);
 
-  useEffect(() => {
-    return () => {
-      previewerRef.current?.destroy();
-      previewerRef.current = null;
-    };
-  }, []);
-
   const goToSlide = (idx: number) => {
-    if (!previewerRef.current || slideCount === 0) return;
-    const clamped = Math.max(0, Math.min(slideCount - 1, idx));
-    setActiveSlide(clamped);
-    previewerRef.current.renderSingleSlide(clamped);
+    if (slides.length === 0) return;
+    setActiveSlide(Math.max(0, Math.min(slides.length - 1, idx)));
   };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (slideCount === 0) return;
+      if (slides.length === 0) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault();
         goToSlide(activeSlide + 1);
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
         goToSlide(activeSlide - 1);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeSlide, slideCount]);
+  }, [activeSlide, slides.length]);
 
   useEffect(() => {
-    const onFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
@@ -127,12 +215,29 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartX.current === null || slides.length === 0) return;
+    const endX = e.changedTouches[0]?.clientX ?? touchStartX.current;
+    const delta = endX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(delta) >= 40) {
+      if (delta < 0) goToSlide(activeSlide + 1);
+      else goToSlide(activeSlide - 1);
+    }
+  };
+
   const handleReset = () => {
-    previewerRef.current?.destroy();
-    previewerRef.current = null;
+    clearTimersAndRequests();
     setFiles([]);
-    setSlideCount(0);
+    setSlides([]);
+    setMissingFonts([]);
+    setWasCached(false);
     setActiveSlide(0);
+    setStatusPhase(null);
     setError(null);
   };
 
@@ -147,129 +252,166 @@ const PptxViewerTool: React.FC<{ tool: ToolDefinition }> = ({ tool }) => {
         onFilesSelected={setFiles}
         onError={setError}
         onReset={handleReset}
-        compact={slideCount > 0}
+        compact={slides.length > 0}
       />
 
       {error && <StatusBanner type="error" message={error} />}
-      {loading && <StatusBanner type="loading" message="Rendering PowerPoint slides with pptx-preview..." />}
+      {statusPhase && <StatusBanner type="loading" message={statusPhase} />}
 
-      {files.length > 0 && (
+      {slides.length > 0 && missingFonts.length > 0 && (
+        <StatusBanner
+          type="info"
+          message={`Font notice: server substituted missing fonts (${missingFonts.slice(0, 5).join(', ')}${
+            missingFonts.length > 5 ? '…' : ''
+          }) with metric-compatible fonts.`}
+        />
+      )}
+
+      {slides.length > 0 && (
         <div className="border border-[#E5E5E5] bg-white">
-          {slideCount > 0 && (
-            <div className="bg-[#F5F5F5] border-b border-[#E5E5E5] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1">
+          <div className="bg-[#F5F5F5] border-b border-[#E5E5E5] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={activeSlide <= 0}
+                onClick={() => goToSlide(activeSlide - 1)}
+                className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Prev
+              </button>
+              <span className="px-3 text-xs font-mono text-[#222222]">
+                Slide {activeSlide + 1} / {slides.length}
+              </span>
+              <button
+                type="button"
+                disabled={activeSlide >= slides.length - 1}
+                onClick={() => goToSlide(activeSlide + 1)}
+                className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+              >
+                Next
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              {wasCached && (
+                <span className="ml-2 text-[11px] font-mono text-[#777777] border border-[#E5E5E5] bg-white px-2 py-0.5">
+                  Cached
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="df-btn-light px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerBlobDownload(files[0], files[0].name)}
+                className="df-btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download PPTX
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="df-btn-light px-2 py-1.5 text-xs cursor-pointer"
+                title="Close presentation"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div
+            ref={stageRef}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            className="bg-[#E5E5E5] p-3 sm:p-6 flex flex-col items-center justify-center"
+          >
+            {/* Large current-slide display */}
+            <div
+              className="w-full border border-[#CCCCCC] bg-white overflow-hidden flex items-center justify-center"
+              style={{
+                maxWidth: isFullscreen ? '1280px' : '960px',
+                aspectRatio: `${aspectRatio}`,
+              }}
+            >
+              <img
+                src={slides[activeSlide]}
+                alt={`Slide ${activeSlide + 1} of ${slides.length}`}
+                className="w-full h-full object-contain select-none"
+                draggable={false}
+              />
+            </div>
+
+            {isFullscreen && (
+              <div className="mt-3 flex items-center gap-2 bg-white border border-[#222222] px-3 py-1.5">
                 <button
                   type="button"
                   disabled={activeSlide <= 0}
                   onClick={() => goToSlide(activeSlide - 1)}
-                  className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                  className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
                   Prev
                 </button>
-                <span className="px-3 text-xs font-mono text-[#222222]">
-                  Slide {activeSlide + 1} / {slideCount}
+                <span className="text-xs font-mono">
+                  {activeSlide + 1} / {slides.length}
                 </span>
                 <button
                   type="button"
-                  disabled={activeSlide >= slideCount - 1}
+                  disabled={activeSlide >= slides.length - 1}
                   onClick={() => goToSlide(activeSlide + 1)}
-                  className="df-btn-light px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                  className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
                 >
                   Next
-                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
-              </div>
-
-              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={toggleFullscreen}
-                  className="df-btn-light px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                  className="df-btn-dark px-2.5 py-1 text-xs cursor-pointer"
                 >
-                  {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                  {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => triggerBlobDownload(files[0], files[0].name)}
-                  className="df-btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download PPTX
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="df-btn-light px-2 py-1.5 text-xs cursor-pointer"
-                  title="Close file"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  Exit
                 </button>
               </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-12">
-            {slideCount > 0 && (
-              <aside className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-[#E5E5E5] bg-[#F5F5F5] p-2.5 max-h-48 lg:max-h-[560px] overflow-y-auto flex lg:flex-col gap-1.5">
-                {Array.from({ length: slideCount }, (_, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => goToSlide(idx)}
-                    className={`text-left px-2.5 py-2 border shrink-0 w-28 lg:w-full text-xs font-mono cursor-pointer ${
-                      idx === activeSlide
-                        ? 'bg-[#222222] text-white border-[#222222]'
-                        : 'bg-white text-[#222222] border-[#E5E5E5] hover:border-[#222222]'
-                    }`}
-                  >
-                    Slide {idx + 1}
-                  </button>
-                ))}
-              </aside>
             )}
 
-            <div
-              ref={stageRef}
-              className={`${slideCount > 0 ? 'lg:col-span-10' : 'lg:col-span-12'} bg-[#E5E5E5] p-4 sm:p-6 flex flex-col items-center justify-center overflow-auto`}
-            >
-              <div
-                ref={previewWrapRef}
-                className="w-full max-w-[960px] bg-white border border-[#CCCCCC] overflow-hidden flex items-center justify-center"
-              />
-
-              {isFullscreen && slideCount > 0 && (
-                <div className="mt-4 flex items-center gap-2 bg-white border border-[#222222] px-3 py-1.5">
+            {/* Thumbnail strip with lazy loading */}
+            {!isFullscreen && (
+              <div className="w-full max-w-[960px] mt-4 border border-[#E5E5E5] bg-white p-2 flex gap-2 overflow-x-auto">
+                {slides.map((src, idx) => (
                   <button
+                    key={src}
                     type="button"
-                    disabled={activeSlide <= 0}
-                    onClick={() => goToSlide(activeSlide - 1)}
-                    className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
+                    onClick={() => goToSlide(idx)}
+                    aria-label={`Go to slide ${idx + 1}`}
+                    className={`shrink-0 border p-1 cursor-pointer transition-colors ${
+                      idx === activeSlide
+                        ? 'border-[#222222] bg-[#222222]'
+                        : 'border-[#E5E5E5] bg-[#F5F5F5] hover:border-[#222222]'
+                    }`}
                   >
-                    Prev
+                    <img
+                      src={src}
+                      alt={`Slide ${idx + 1} thumbnail`}
+                      loading="lazy"
+                      className="h-16 w-auto block bg-white"
+                    />
+                    <div
+                      className={`text-[10px] font-mono text-center mt-1 ${
+                        idx === activeSlide ? 'text-white' : 'text-[#222222]'
+                      }`}
+                    >
+                      {idx + 1}
+                    </div>
                   </button>
-                  <span className="text-xs font-mono">
-                    {activeSlide + 1} / {slideCount}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={activeSlide >= slideCount - 1}
-                    onClick={() => goToSlide(activeSlide + 1)}
-                    className="df-btn-light px-2.5 py-1 text-xs cursor-pointer"
-                  >
-                    Next
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleFullscreen}
-                    className="df-btn-dark px-2.5 py-1 text-xs cursor-pointer"
-                  >
-                    Exit
-                  </button>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

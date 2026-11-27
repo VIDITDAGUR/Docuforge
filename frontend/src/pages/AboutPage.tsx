@@ -22,13 +22,13 @@ export const AboutPage: React.FC = () => {
             <div className="border border-[#E5E5E5] bg-[#F5F5F5] p-3.5">
               <div className="font-semibold text-[#222222] mb-1">Local Browser Processing</div>
               <p className="text-[#777777] leading-relaxed">
-                PDF Viewer, PDF Editor, PDF Resizer, Image to PDF, PDF to Image, Image Compressor, Word Editor (DOCX export), and PPTX Viewer run entirely in your browser. Files never leave your computer.
+                PDF Viewer, PDF Editor, PDF Resizer, Image to PDF, PDF to Image, Image Compressor, and Word Editor (DOCX export) run entirely in your browser. Files never leave your computer.
               </p>
             </div>
             <div className="border border-[#E5E5E5] bg-[#F5F5F5] p-3.5">
               <div className="font-semibold text-[#222222] mb-1">Stateless Backend Processing</div>
               <p className="text-[#777777] leading-relaxed">
-                PDF to Word, Word to PDF, PDF to PowerPoint, and PowerPoint to PDF use the FastAPI backend. Uploaded files are validated by size and signature, processed in isolated temporary directories, and deleted immediately after the converted file is sent.
+                PDF to Word, Word to PDF, PDF to PowerPoint, PDF/Word Compressors, and the high-fidelity PPTX Viewer use the FastAPI backend. Uploaded files are validated by size, MIME type, and signature, with source temp files removed immediately and slide PNG previews cached by SHA-256 hash.
               </p>
             </div>
           </div>
@@ -50,14 +50,14 @@ export const AboutPage: React.FC = () => {
               <strong className="text-[#222222]">PDF to PowerPoint:</strong> Renders each PDF page cleanly onto a matching slide to guarantee exact visual fidelity, while attaching extracted page text as slide notes.
             </li>
             <li>
-              <strong className="text-[#222222]">PowerPoint to PDF:</strong> Preserves slide dimensions, backgrounds, shapes, images, and text boxes. Slide animations and transitions are excluded.
+              <strong className="text-[#222222]">PPTX Viewer:</strong> Converts `.pptx` decks server-side via LibreOffice headless and Poppler (`pdftoppm`) into per-slide PNG images for high-fidelity viewing. Animations, slide transitions, and embedded video/audio are not preserved.
             </li>
           </ul>
         </section>
 
         <div className="pt-2">
           <Link to="/tools" className="df-btn-dark px-4 py-2 text-xs font-medium inline-block">
-            Browse All 12 Tools
+            Browse All 13 Tools
           </Link>
         </div>
       </div>
